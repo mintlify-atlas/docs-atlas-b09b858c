@@ -1,0 +1,143 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Agentic AI",
+  "projectDescription": "AI-powered voice agent for phone calls with OpenAI Realtime API, Twilio integration, and ClawdBot command execution via OpenClaw Gateway",
+  "theme": "aspen",
+  "primaryColor": "#8B5CF6",
+  "lightColor": "#A78BFA",
+  "darkColor": "#7C3AED",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/conversation-brain",
+              "concepts/audio-pipeline",
+              "concepts/clawdbot-integration"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/environment",
+              "configuration/config-file",
+              "configuration/voice-options",
+              "configuration/tunnel-setup"
+            ]
+          },
+          {
+            "group": "Usage Guides",
+            "pages": [
+              "guides/making-calls",
+              "guides/receiving-calls",
+              "guides/service-management",
+              "guides/scheduling-calls",
+              "guides/telegram-integration"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/twilio",
+              "integrations/openai-realtime",
+              "integrations/openclaw-gateway",
+              "integrations/gemini"
+            ]
+          },
+          {
+            "group": "Troubleshooting",
+            "pages": [
+              "troubleshooting/common-issues",
+              "troubleshooting/debugging"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI Reference",
+        "groups": [
+          {
+            "group": "Commands",
+            "pages": [
+              "cli/overview",
+              "cli/server",
+              "cli/trigger",
+              "cli/bot",
+              "cli/schedule",
+              "cli/service",
+              "cli/tunnel",
+              "cli/status"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Python API",
+            "pages": [
+              "api/call-manager",
+              "api/conversation-brain",
+              "api/audio-bridge",
+              "api/gateway-client"
+            ]
+          },
+          {
+            "group": "REST API",
+            "pages": [
+              "api/rest/overview",
+              "api/rest/initiate-call",
+              "api/rest/list-calls",
+              "api/rest/end-call"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Real-time voice calls with OpenAI Realtime API",
+    "Twilio integration for phone infrastructure",
+    "ClawdBot integration for command execution via OpenClaw Gateway",
+    "Intelligent conversation brain with intent understanding",
+    "Background service with auto-restart and scheduling",
+    "Telegram live transcripts",
+    "Webhook tunneling support (ngrok/Cloudflare)",
+    "Incoming and outgoing call handling"
+  ],
+  "publicApiSurface": [
+    "agenticai server - Start webhook server",
+    "agenticai trigger - Initiate outbound call",
+    "agenticai bot - Connect to OpenClaw Gateway terminal",
+    "agenticai schedule list - List configured schedules",
+    "agenticai schedule run - Execute schedule immediately",
+    "agenticai service install - Install as background service",
+    "agenticai service start/stop/restart - Manage service",
+    "agenticai service status - Check service status",
+    "agenticai service logs - View service logs",
+    "agenticai tunnel start - Start tunnel for webhooks",
+    "agenticai status - Show system status",
+    "agenticai setup - Interactive setup wizard",
+    "agenticai test-connection - Test all service connections",
+    "CallManager - Manage call lifecycle",
+    "ConversationBrain - Intent understanding and memory",
+    "AudioBridge - Audio format conversion and routing",
+    "GatewayClient - OpenClaw Gateway WebSocket client",
+    "POST /api/call - Initiate call via REST",
+    "GET /api/calls - List active calls",
+    "POST /api/calls/{id}/end - End active call"
+  ]
+}
