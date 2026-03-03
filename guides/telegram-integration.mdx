@@ -1,0 +1,653 @@
+---
+title: Telegram Integration
+description: Get live call transcripts and notifications via Telegram
+---
+
+Receive real-time call transcripts, status updates, and summaries directly in Telegram.
+
+## Overview
+
+Telegram integration provides:
+
+- 📞 **Call started notifications** with call details
+- 💬 **Live transcripts** for both user and AI
+- ✅ **Call completion summaries** with duration and outcome
+- 🔴 **Error notifications** if calls fail
+- 🤖 **Direct Telegram Bot API** (no ClawdBot dependency)
+
+Reference: `src/agenticai/telegram/direct_client.py`
+
+## Setup
+
+<Steps>
+
+### Step 1: Create a Telegram Bot
+
+1. Open Telegram and search for [@BotFather](https://t.me/BotFather)
+2. Send `/newbot` to create a new bot
+3. Follow the prompts:
+   - **Bot name:** "Agentic AI Monitor" (or your choice)
+   - **Bot username:** Must end in "bot" (e.g., `myagenticai_bot`)
+4. BotFather will reply with your **bot token**:
+   ```
+   Use this token to access the HTTP API:
+   123456789:ABCdefGHIjklMNOpqrsTUVwxyz1234567890
+   ```
+5. Copy this token for the next step
+
+### Step 2: Get Your Chat ID
+
+1. Find your new bot in Telegram (search for the username)
+2. Send any message to the bot (e.g., "hi")
+3. Visit this URL in your browser (replace `<YOUR_BOT_TOKEN>`):
+   ```
+   https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates
+   ```
+4. Look for the `chat` object in the JSON response:
+   ```json
+   {
+     "ok": true,
+     "result": [
+       {
+         "update_id": 123456789,
+         "message": {
+           "message_id": 1,
+           "from": {...},
+           "chat": {
+             "id": 987654321,  // This is your Chat ID!
+             "first_name": "Your Name",
+             "type": "private"
+           },
+           "text": "hi"
+         }
+       }
+     ]
+   }
+   ```
+5. Copy the `chat.id` value (e.g., `987654321`)
+
+### Step 3: Configure Environment
+
+Add your bot token and chat ID to `.env`:
+
+```bash .env
+# Telegram Integration
+TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz1234567890
+TELEGRAM_CHAT_ID=987654321
+```
+
+### Step 4: Enable in Config
+
+Enable Telegram in `config.yaml`:
+
+```yaml config.yaml
+telegram:
+  enabled: true
+  bot_token: ${TELEGRAM_BOT_TOKEN}
+  chat_id: ${TELEGRAM_CHAT_ID}
+```
+
+### Step 5: Test Connection
+
+Verify the integration works:
+
+```bash
+agenticai test-connection
+```
+
+**Expected output:**
+
+```
+🔍 Testing Connections
+
+Testing Twilio...
+  ✓ Twilio OK
+Testing Gateway...
+  ✓ Gateway OK
+Checking Gemini config...
+  ✓ Gemini configured
+
+┌─────────┬────────────┬──────────────────────┐
+│ Service │ Status     │ Details              │
+├─────────┼────────────┼──────────────────────┤
+│ Twilio  │ ✓ Connected│ Account: Your Name   │
+│ Gateway │ ✓ Connected│ ws://127.0.0.1:18789 │
+│ Gemini  │ ✓ Configured│ Model: gemini-2.5-* │
+└─────────┴────────────┴──────────────────────┘
+```
+
+You should receive a test message in Telegram:
+
+```
+✅ Agentic AI Connected
+
+Telegram integration is working!
+```
+
+</Steps>
+
+## Message Types
+
+The Telegram client sends different message types:
+
+### Call Started
+
+When a call begins:
+
+```
+📞 Call Started
+
+Call ID: `CA1234567890abcdef`
+To: +15551234567
+Prompt: Ask about their appointment for tomorrow
+
+Listening for transcripts...
+```
+
+Reference: `src/agenticai/telegram/direct_client.py:95-121`
+
+### Live Transcripts
+
+During the conversation:
+
+```
+👤 User
+Hi, I wanted to check on my appointment
+
+🤖 Assistant
+Of course! Let me look that up for you. Can you provide your appointment confirmation number?
+
+👤 User
+It's A-B-1-2-3-4
+
+🤖 Assistant
+Thank you! I found your appointment for tomorrow at 3 PM. Would you like to confirm or reschedule?
+```
+
+Reference: `src/agenticai/telegram/direct_client.py:69-93`
+
+### Call Ended
+
+When the call completes:
+
+```
+✅ Call Ended
+
+Call ID: `CA1234567890abcdef`
+Duration: 127.3s
+Transcripts: 8
+Outcome: completed
+
+Summary:
+Customer confirmed appointment for tomorrow at 3 PM.
+```
+
+Reference: `src/agenticai/telegram/direct_client.py:123-157`
+
+### Error Notifications
+
+If a call fails:
+
+```
+❌ Call Ended
+
+Call ID: `CA1234567890abcdef`
+Duration: 12.1s
+Transcripts: 1
+Outcome: failed
+
+Summary:
+Call failed: Invalid phone number format
+```
+
+## Customizing Messages
+
+### Markdown Formatting
+
+Messages support Telegram Markdown:
+
+```python
+from agenticai.telegram.direct_client import TelegramDirectClient
+
+telegram = TelegramDirectClient(bot_token, chat_id)
+
+telegram.send_message(
+    "**Bold text**\n"
+    "_Italic text_\n"
+    "`Code text`\n"
+    "[Link](https://example.com)",
+    parse_mode="Markdown"
+)
+```
+
+### HTML Formatting
+
+```python
+telegram.send_message(
+    "<b>Bold</b>\n"
+    "<i>Italic</i>\n"
+    "<code>Code</code>\n"
+    '<a href="https://example.com">Link</a>',
+    parse_mode="HTML"
+)
+```
+
+### Silent Notifications
+
+Send messages without sound/vibration:
+
+```python
+telegram.send_message(
+    "Low priority notification",
+    disable_notification=True
+)
+```
+
+Reference: `src/agenticai/telegram/direct_client.py:24-67`
+
+## Advanced Usage
+
+### Multiple Chat IDs
+
+Send notifications to multiple users or groups:
+
+```python
+telegram = TelegramDirectClient(bot_token, default_chat_id)
+
+# Send to different chat
+telegram.send_message(
+    "VIP customer call started",
+    chat_id="123456789"  # Manager's chat ID
+)
+
+# Send to group
+telegram.send_message(
+    "Support call in progress",
+    chat_id="-987654321"  # Group chat ID (note the minus sign)
+)
+```
+
+### Programmatic Integration
+
+Send custom messages from your application:
+
+```python
+from agenticai.telegram.direct_client import TelegramDirectClient
+from agenticai.core.config import load_config
+
+config = load_config()
+
+if config.telegram.enabled:
+    telegram = TelegramDirectClient(
+        bot_token=config.telegram.bot_token,
+        chat_id=config.telegram.chat_id
+    )
+    
+    # Custom notification
+    telegram.send_message(
+        "🔔 **System Alert**\n\n"
+        "Server started successfully!\n"
+        f"Active calls: 0\n"
+        f"Schedules loaded: 5"
+    )
+```
+
+### Call Transcripts with Metadata
+
+Include metadata in notifications:
+
+```python
+# When call starts
+telegram.send_message(
+    f"📞 **Call Started**\n\n"
+    f"**Call ID:** `{call_id}`\n"
+    f"**To:** {to_number}\n"
+    f"**Campaign:** {metadata['campaign_id']}\n"
+    f"**Customer Tier:** {metadata['customer_tier']}\n\n"
+    f"_{prompt}_"
+)
+```
+
+## Incoming Call Notifications
+
+For incoming calls, the direction is included:
+
+```
+📞 Call Started
+
+Call ID: `incoming_CA123...`
+From: +15551234567  ← Note: Shows caller's number
+To: +15559876543
+Prompt: You are Alchemy, an AI agent...
+
+Listening for transcripts...
+```
+
+Reference: `src/agenticai/server/app.py:130-145` (incoming call detection)
+
+## Telegram Bot Commands
+
+### Optional: Add Bot Commands
+
+Enhance your bot with custom commands:
+
+1. Open [@BotFather](https://t.me/BotFather) in Telegram
+2. Send `/setcommands`
+3. Select your bot
+4. Send this command list:
+   ```
+   status - Show server status
+   calls - List active calls
+   schedules - View scheduled calls
+   help - Show help information
+   ```
+
+<Note>
+Implementing command handlers requires extending the Telegram client. The current implementation only sends notifications.
+</Note>
+
+## Troubleshooting
+
+<Accordion title="No messages received">
+
+**Symptoms:** Calls work but no Telegram notifications
+
+**Solutions:**
+
+1. Verify Telegram is enabled:
+   ```yaml
+   # config.yaml
+   telegram:
+     enabled: true  # Must be true!
+   ```
+
+2. Check bot token is correct:
+   ```bash
+   curl https://api.telegram.org/bot<YOUR_TOKEN>/getMe
+   ```
+   
+   **Expected response:**
+   ```json
+   {
+     "ok": true,
+     "result": {
+       "id": 123456789,
+       "is_bot": true,
+       "first_name": "Your Bot Name",
+       "username": "your_bot_username"
+     }
+   }
+   ```
+
+3. Verify chat ID:
+   ```bash
+   curl https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
+   ```
+   
+   Make sure you've messaged the bot at least once.
+
+4. Test manually:
+   ```bash
+   curl -X POST "https://api.telegram.org/bot<YOUR_TOKEN>/sendMessage" \
+     -d "chat_id=<YOUR_CHAT_ID>" \
+     -d "text=Test message"
+   ```
+
+5. Check server logs:
+   ```bash
+   agenticai service logs -f | grep -i telegram
+   ```
+
+Reference: `src/agenticai/telegram/direct_client.py:159-173`
+
+</Accordion>
+
+<Accordion title="Messages sent to wrong chat">
+
+**Symptoms:** Messages appear in a different chat
+
+**Solutions:**
+
+1. Verify chat ID in `.env`:
+   ```bash
+   cat .env | grep TELEGRAM_CHAT_ID
+   ```
+
+2. Get your correct chat ID:
+   - Message your bot
+   - Visit: `https://api.telegram.org/bot<TOKEN>/getUpdates`
+   - Find `chat.id` in the response
+
+3. Update `.env`:
+   ```bash
+   TELEGRAM_CHAT_ID=your_correct_chat_id
+   ```
+
+4. Restart the service:
+   ```bash
+   agenticai service restart
+   ```
+
+</Accordion>
+
+<Accordion title="Error: 'Unauthorized'">
+
+**Symptoms:** API returns `{"ok": false, "error_code": 401, "description": "Unauthorized"}`
+
+**Solutions:**
+
+1. Bot token is incorrect. Get a new one:
+   - Message [@BotFather](https://t.me/BotFather)
+   - Send `/mybots`
+   - Select your bot
+   - Click **API Token**
+
+2. Update `.env` with correct token:
+   ```bash
+   TELEGRAM_BOT_TOKEN=123456789:ABCdef...
+   ```
+
+3. Restart service:
+   ```bash
+   agenticai service restart
+   ```
+
+</Accordion>
+
+<Accordion title="Error: 'Chat not found'">
+
+**Symptoms:** API returns `{"ok": false, "error_code": 400, "description": "Bad Request: chat not found"}`
+
+**Solutions:**
+
+1. You haven't messaged the bot yet:
+   - Open Telegram
+   - Search for your bot username
+   - Send any message (e.g., "hi")
+
+2. Chat ID might be wrong:
+   - Visit: `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates`
+   - Verify the `chat.id` matches your `.env`
+
+3. For group chats:
+   - Add the bot to the group
+   - Chat ID for groups is negative (e.g., `-123456789`)
+
+</Accordion>
+
+<Accordion title="Markdown formatting not working">
+
+**Symptoms:** Asterisks and underscores appear literally
+
+**Solutions:**
+
+1. Use correct Markdown syntax:
+   ```python
+   # Good
+   "**Bold text**"
+   "_Italic text_"
+   
+   # Bad
+   "*Bold text*"  # Single asterisk doesn't work
+   "_Italic text"  # Missing closing underscore
+   ```
+
+2. Escape special characters:
+   ```python
+   # If text contains special chars, escape them
+   "Price: $100"  # ✓ OK
+   "Use \* for emphasis"  # Escape asterisk
+   ```
+
+3. Try HTML mode instead:
+   ```python
+   telegram.send_message(
+       "<b>Bold</b> and <i>italic</i>",
+       parse_mode="HTML"
+   )
+   ```
+
+</Accordion>
+
+## API Reference
+
+### TelegramDirectClient
+
+Main class for Telegram integration.
+
+```python
+from agenticai.telegram.direct_client import TelegramDirectClient
+
+client = TelegramDirectClient(
+    bot_token="123456789:ABC...",
+    chat_id="987654321"
+)
+```
+
+### send_message()
+
+Send a text message.
+
+```python
+client.send_message(
+    text="Hello from Agentic AI!",
+    chat_id=None,  # Optional: override default chat_id
+    parse_mode="Markdown",  # "Markdown", "HTML", or None
+    disable_notification=False  # True for silent messages
+)
+```
+
+Reference: `src/agenticai/telegram/direct_client.py:24-67`
+
+### send_transcript()
+
+Send a formatted transcript message.
+
+```python
+client.send_transcript(
+    speaker="user",  # "user" or "assistant"
+    text="Hello, how are you?",
+    is_final=True,  # False shows "(partial)"
+    chat_id=None
+)
+```
+
+Reference: `src/agenticai/telegram/direct_client.py:69-93`
+
+### send_call_started()
+
+Notify when a call begins.
+
+```python
+client.send_call_started(
+    call_id="CA123...",
+    prompt="Ask about their appointment",
+    to_number="+15551234567",
+    chat_id=None
+)
+```
+
+Reference: `src/agenticai/telegram/direct_client.py:95-121`
+
+### send_call_ended()
+
+Notify when a call completes.
+
+```python
+client.send_call_ended(
+    call_id="CA123...",
+    duration=142.5,  # seconds
+    transcript_count=12,
+    outcome="completed",  # "completed", "failed", "no-answer"
+    summary="Customer confirmed appointment",
+    chat_id=None
+)
+```
+
+Reference: `src/agenticai/telegram/direct_client.py:123-157`
+
+### test_connection()
+
+Test the Telegram connection.
+
+```python
+if client.test_connection():
+    print("Telegram connected!")
+else:
+    print("Connection failed")
+```
+
+Reference: `src/agenticai/telegram/direct_client.py:159-173`
+
+## Privacy and Security
+
+### Keep Your Bot Token Secret
+
+<Warning>
+Never commit your bot token to version control!
+</Warning>
+
+```bash
+# ✓ Good: Use environment variables
+TELEGRAM_BOT_TOKEN=123456789:ABC...
+
+# ✗ Bad: Hardcode in config
+bot_token: "123456789:ABC..."  # DON'T DO THIS
+```
+
+### Restrict Bot Access
+
+1. Only share your bot username with trusted users
+2. For groups: Make the bot an admin to control who can add it
+3. Monitor unauthorized access:
+   ```bash
+   curl https://api.telegram.org/bot<TOKEN>/getUpdates
+   # Check for unexpected chat IDs
+   ```
+
+### Disable Bot (Emergency)
+
+If your token is compromised:
+
+1. Message [@BotFather](https://t.me/BotFather)
+2. Send `/mybots`
+3. Select your bot
+4. Click **Revoke Token**
+5. Generate a new token and update `.env`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Making Calls" icon="phone" href="/guides/making-calls">
+    Initiate calls to see Telegram notifications
+  </Card>
+  <Card title="Receiving Calls" icon="phone-incoming" href="/guides/receiving-calls">
+    Monitor incoming calls
+  </Card>
+  <Card title="Scheduling" icon="calendar" href="/guides/scheduling-calls">
+    Track scheduled calls
+  </Card>
+  <Card title="Service Management" icon="server" href="/guides/service-management">
+    View Telegram logs
+  </Card>
+</CardGroup>

@@ -1,0 +1,247 @@
+---
+title: 'List Calls'
+description: 'Retrieve all currently active calls'
+---
+
+## Endpoint
+
+```
+GET /api/calls
+```
+
+Returns a list of all active call sessions currently being managed by the server. This includes both outbound calls initiated via the API and incoming calls received by your Twilio number.
+
+## Request
+
+This endpoint requires no parameters or request body.
+
+```bash
+GET /api/calls
+```
+
+## Response
+
+<ResponseField name="calls" type="array" required>
+  Array of active call objects.
+  
+  <Expandable title="Call Object">
+    <ResponseField name="call_id" type="string" required>
+      Unique identifier for the call (UUID v4 format).
+    </ResponseField>
+    
+    <ResponseField name="to_number" type="string" required>
+      The phone number being called (for outbound) or the caller's number (for incoming calls).
+    </ResponseField>
+    
+    <ResponseField name="status" type="string" required>
+      Current status of the call. Possible values:
+      - `initiating` - Call is being set up
+      - `ringing` - Call is ringing
+      - `in-progress` - Call is active and media stream is connected
+      - `completed` - Call has ended normally
+      - `failed` - Call failed
+      - `busy` - Called party was busy
+      - `no-answer` - Call was not answered
+      - `canceled` - Call was canceled
+    </ResponseField>
+    
+    <ResponseField name="direction" type="string" required>
+      Direction of the call:
+      - `outbound` - Call initiated via API
+      - `incoming` - Call received on Twilio number
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="count" type="integer" required>
+  Total number of active calls.
+</ResponseField>
+
+## Examples
+
+### List All Active Calls
+
+<CodeGroup>
+```bash cURL
+curl http://localhost:8080/api/calls
+```
+
+```python Python
+import requests
+
+response = requests.get("http://localhost:8080/api/calls")
+calls = response.json()
+
+print(f"Active calls: {calls['count']}")
+for call in calls['calls']:
+    print(f"  - {call['call_id']}: {call['status']}")
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:8080/api/calls');
+const calls = await response.json();
+
+console.log(`Active calls: ${calls.count}`);
+calls.calls.forEach(call => {
+  console.log(`  - ${call.call_id}: ${call.status}`);
+});
+```
+</CodeGroup>
+
+### Response with Multiple Calls
+
+```json
+{
+  "calls": [
+    {
+      "call_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "to_number": "+1234567890",
+      "status": "in-progress",
+      "direction": "outbound"
+    },
+    {
+      "call_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "to_number": "+19876543210",
+      "status": "ringing",
+      "direction": "outbound"
+    },
+    {
+      "call_id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+      "to_number": "+15555555555",
+      "status": "in-progress",
+      "direction": "incoming"
+    }
+  ],
+  "count": 3
+}
+```
+
+### Response with No Active Calls
+
+```json
+{
+  "calls": [],
+  "count": 0
+}
+```
+
+## Use Cases
+
+### Monitor Call Status
+
+Poll this endpoint to track the progress of calls you've initiated:
+
+```python
+import requests
+import time
+
+# Initiate a call
+response = requests.post(
+    "http://localhost:8080/api/call",
+    json={"to": "+1234567890", "webhook_url": "https://your-url.ngrok.io"}
+)
+call_id = response.json()["call_id"]
+
+# Poll for status
+while True:
+    calls = requests.get("http://localhost:8080/api/calls").json()
+    active_call = next((c for c in calls["calls"] if c["call_id"] == call_id), None)
+    
+    if not active_call:
+        print("Call ended")
+        break
+    
+    print(f"Call status: {active_call['status']}")
+    time.sleep(2)
+```
+
+### Dashboard Display
+
+Build a real-time dashboard showing all active calls:
+
+```javascript
+// Fetch and display active calls every 3 seconds
+setInterval(async () => {
+  const response = await fetch('http://localhost:8080/api/calls');
+  const data = await response.json();
+  
+  document.getElementById('call-count').textContent = data.count;
+  
+  const callList = document.getElementById('call-list');
+  callList.innerHTML = data.calls.map(call => `
+    <div class="call-item">
+      <span class="call-id">${call.call_id}</span>
+      <span class="call-status">${call.status}</span>
+      <span class="call-direction">${call.direction}</span>
+      <button onclick="endCall('${call.call_id}')">End Call</button>
+    </div>
+  `).join('');
+}, 3000);
+```
+
+### Load Balancing Check
+
+Check server capacity before initiating a new call:
+
+```python
+import requests
+
+MAX_CONCURRENT_CALLS = 10
+
+# Check current load
+calls = requests.get("http://localhost:8080/api/calls").json()
+
+if calls["count"] < MAX_CONCURRENT_CALLS:
+    # Safe to initiate new call
+    response = requests.post(
+        "http://localhost:8080/api/call",
+        json={"to": "+1234567890", "webhook_url": "https://your-url.ngrok.io"}
+    )
+    print("Call initiated")
+else:
+    print("Server at capacity, try again later")
+```
+
+## Implementation Details
+
+The endpoint:
+
+1. Retrieves all active sessions from the `CallManager`
+2. Iterates through each `CallSession` object
+3. Extracts relevant fields: `call_id`, `to_number`, `status`, `direction`
+4. Returns the list with a total count
+
+<Info>
+  This endpoint only returns **active** calls. Once a call ends (completed, failed, etc.), it is removed from the active sessions and will not appear in this list.
+</Info>
+
+## Call Status Lifecycle
+
+A typical outbound call progresses through these statuses:
+
+1. **initiating** → Call being set up
+2. **ringing** → Call is ringing at recipient
+3. **in-progress** → Call answered and media stream connected
+4. **completed** → Call ended normally (removed from list)
+
+An incoming call follows a similar pattern:
+
+1. **ringing** → Incoming call detected
+2. **in-progress** → Call answered and media stream connected
+3. **completed** → Call ended (removed from list)
+
+## Source Code Reference
+
+Implementation: `src/agenticai/server/app.py:236-250`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Initiate a Call" icon="phone-arrow-up-right" href="/api/rest/initiate-call">
+    Start a new call to monitor
+  </Card>
+  
+  <Card title="End a Call" icon="phone-hangup" href="/api/rest/end-call">
+    Terminate an active call from the list
+  </Card>
+</CardGroup>

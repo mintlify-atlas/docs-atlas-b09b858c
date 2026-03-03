@@ -1,0 +1,465 @@
+---
+title: Tunnel Setup
+description: Configure ngrok or Cloudflare tunnels to expose your local server for Twilio webhooks
+icon: network-wired
+---
+
+Agentic AI requires a public URL for Twilio to send webhook requests and establish Media Stream WebSocket connections. During local development, you'll need a tunnel service to expose your local server.
+
+## Why You Need a Tunnel
+
+Twilio's servers need to reach your application:
+
+1. **Voice Webhooks** - TwiML instructions when a call starts (`POST /twilio/voice`)
+2. **Media Streams** - Real-time audio WebSocket (`WSS /twilio/media-stream`)
+
+Since your local machine isn't publicly accessible, a tunnel creates a secure connection between Twilio and your local server.
+
+## Tunnel Providers
+
+Agentic AI supports two popular tunnel providers:
+
+<CardGroup cols={2}>
+  <Card title="ngrok" icon="n" href="#ngrok-setup">
+    Popular, easy to use, generous free tier
+  </Card>
+  <Card title="Cloudflare Tunnel" icon="cloudflare" href="#cloudflare-tunnel">
+    Enterprise-grade, unlimited bandwidth, free
+  </Card>
+</CardGroup>
+
+## ngrok Setup
+
+ngrok is the most popular tunneling solution and easiest to get started with.
+
+### Step 1: Install ngrok
+
+<CodeGroup>
+```bash macOS
+brew install ngrok
+```
+
+```bash Linux
+# Download and install
+curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | \
+  sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | \
+  sudo tee /etc/apt/sources.list.d/ngrok.list
+sudo apt update && sudo apt install ngrok
+```
+
+```bash Windows
+# Download from https://ngrok.com/download
+# Or use Chocolatey:
+choco install ngrok
+```
+
+```bash Direct Download
+# Download from https://ngrok.com/download
+unzip ngrok-v3-stable-linux-amd64.zip
+sudo mv ngrok /usr/local/bin/
+```
+</CodeGroup>
+
+### Step 2: Get Your Auth Token
+
+1. Sign up at [ngrok.com](https://ngrok.com/)
+2. Go to [dashboard.ngrok.com/get-started/your-authtoken](https://dashboard.ngrok.com/get-started/your-authtoken)
+3. Copy your authtoken
+
+### Step 3: Configure ngrok
+
+```bash
+ngrok config add-authtoken YOUR_AUTHTOKEN_HERE
+```
+
+### Step 4: Start the Tunnel
+
+<CodeGroup>
+```bash Using Agentic AI CLI
+agenticai tunnel start
+```
+
+```bash Direct ngrok Command
+ngrok http 8080
+```
+</CodeGroup>
+
+You'll see output like:
+
+```
+Session Status                online
+Account                       your-email@example.com
+Version                       3.x.x
+Region                        United States (us)
+Forwarding                    https://abc123.ngrok.io -> http://localhost:8080
+```
+
+<Note>
+  Copy the `https://abc123.ngrok.io` URL - this is your webhook URL!
+</Note>
+
+### Step 5: Configure Agentic AI
+
+Add the ngrok URL to your `.env` (optional):
+
+```bash
+# Optional: Set a fixed URL for paid plans
+NGROK_URL=https://your-custom-domain.ngrok.io
+```
+
+Or pass it when starting the service:
+
+```bash
+agenticai service install --webhook-url https://abc123.ngrok.io
+agenticai service start
+```
+
+### ngrok Free vs Paid
+
+| Feature | Free | Paid ($8/month) |
+|---------|------|------------------|
+| **Tunnel count** | 1 online tunnel | 3+ tunnels |
+| **URL format** | Random (https://abc123.ngrok.io) | Custom domain |
+| **URL persistence** | Changes on restart | Fixed domain |
+| **Rate limiting** | 40 requests/minute | Higher limits |
+| **Best for** | Development | Production |
+
+<Warning>
+  Free ngrok URLs change every time you restart ngrok. You'll need to update your Twilio webhook configuration each time.
+</Warning>
+
+## Cloudflare Tunnel
+
+Cloudflare Tunnel (formerly Argo Tunnel) is a free, enterprise-grade alternative with unlimited bandwidth.
+
+### Step 1: Install cloudflared
+
+<CodeGroup>
+```bash macOS
+brew install cloudflare/cloudflare/cloudflared
+```
+
+```bash Linux (Debian/Ubuntu)
+# Add Cloudflare GPG key
+sudo mkdir -p --mode=0755 /usr/share/keyrings
+curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+
+# Add repository
+echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
+
+# Install
+sudo apt-get update && sudo apt-get install cloudflared
+```
+
+```bash Windows
+# Download from https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+# Or use winget:
+winget install --id Cloudflare.cloudflared
+```
+
+```bash Direct Download
+# Download from https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+sudo mv cloudflared-linux-amd64 /usr/local/bin/cloudflared
+sudo chmod +x /usr/local/bin/cloudflared
+```
+</CodeGroup>
+
+### Step 2: Authenticate
+
+```bash
+cloudflared tunnel login
+```
+
+This opens a browser where you'll authorize cloudflared to your Cloudflare account.
+
+### Step 3: Create a Tunnel
+
+```bash
+# Create a named tunnel
+cloudflared tunnel create agenticai
+
+# Note the Tunnel ID that appears (e.g., "abc123-def456-ghi789")
+```
+
+### Step 4: Configure the Tunnel
+
+Create `~/.cloudflared/config.yml`:
+
+```yaml
+tunnel: agenticai
+credentials-file: /home/YOUR_USER/.cloudflared/abc123-def456-ghi789.json
+
+ingress:
+  - hostname: agenticai.yourdomain.com
+    service: http://localhost:8080
+  - service: http_status:404
+```
+
+Replace:
+- `YOUR_USER` with your username
+- `abc123-def456-ghi789` with your actual tunnel ID
+- `agenticai.yourdomain.com` with a subdomain you own
+
+### Step 5: Add DNS Record
+
+```bash
+cloudflared tunnel route dns agenticai agenticai.yourdomain.com
+```
+
+This creates a CNAME record pointing to your tunnel.
+
+### Step 6: Start the Tunnel
+
+```bash
+cloudflared tunnel run agenticai
+```
+
+Your tunnel is now active at `https://agenticai.yourdomain.com`!
+
+### Step 7: Configure Agentic AI
+
+Update `config.yaml`:
+
+```yaml
+tunnel:
+  enabled: true
+  provider: "cloudflare"
+  url: "https://agenticai.yourdomain.com"
+```
+
+### Run as a Service
+
+Install cloudflared as a system service for automatic startup:
+
+```bash
+sudo cloudflared service install
+sudo systemctl start cloudflared
+sudo systemctl enable cloudflared
+```
+
+### Cloudflare Tunnel Benefits
+
+- Free, unlimited bandwidth
+- Fixed custom domain
+- DDoS protection
+- No rate limiting
+- Enterprise-grade reliability
+- Survives restarts
+
+<Note>
+  Cloudflare Tunnel requires you to own a domain managed by Cloudflare.
+</Note>
+
+## Configuration Reference
+
+Configure tunnel behavior in `config.yaml`:
+
+```yaml
+tunnel:
+  enabled: false  # Auto-start tunnel with Agentic AI
+  provider: "ngrok"  # or "cloudflare"
+  url: ${NGROK_URL:}  # Fixed URL (paid plans)
+```
+
+<ParamField path="tunnel.enabled" type="boolean" default={false}>
+  Enable automatic tunnel startup.
+  
+  <Warning>Most users should manage tunnels separately and set this to `false`.</Warning>
+  
+  Set to `true` only if you want Agentic AI to manage the tunnel process.
+</ParamField>
+
+<ParamField path="tunnel.provider" type="string" default="ngrok">
+  The tunnel provider to use.
+  
+  Options:
+  - `ngrok` - Most popular, easy setup
+  - `cloudflare` - Enterprise-grade, custom domain
+</ParamField>
+
+<ParamField path="tunnel.url" type="string">
+  A fixed tunnel URL (for paid plans with custom domains).
+  
+  Examples:
+  - ngrok: `https://myapp.ngrok.io`
+  - Cloudflare: `https://agenticai.yourdomain.com`
+  
+  If empty, the URL must be provided when starting the service:
+  ```bash
+  agenticai service install --webhook-url https://abc123.ngrok.io
+  ```
+</ParamField>
+
+## Setting Up Twilio Webhooks
+
+Once your tunnel is running, configure Twilio to use it:
+
+### For Incoming Calls
+
+1. Go to [Twilio Console](https://console.twilio.com/) → **Phone Numbers** → **Manage** → **Active Numbers**
+2. Click your phone number
+3. Under "Voice & Fax" → "A call comes in":
+   - Set to: **Webhook**
+   - URL: `https://your-tunnel-url.com/twilio/voice`
+   - Method: **HTTP POST**
+4. Click **Save**
+
+### For Outgoing Calls
+
+When triggering calls via CLI, pass the webhook URL:
+
+```bash
+agenticai trigger --to +1234567890 --webhook-url https://your-tunnel-url.com
+```
+
+The CLI automatically appends `/twilio/voice` to the webhook path.
+
+## Webhook Endpoints
+
+Your tunnel exposes these endpoints:
+
+| Endpoint | Protocol | Purpose |
+|----------|----------|----------|
+| `/twilio/voice` | HTTP POST | TwiML webhook for call setup |
+| `/twilio/media-stream` | WebSocket | Real-time audio streaming |
+| `/health` | HTTP GET | Health check |
+
+## Testing Your Tunnel
+
+### 1. Test HTTP Webhook
+
+```bash
+curl -X POST https://your-tunnel-url.com/twilio/voice \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "From=+1234567890&To=+0987654321"
+```
+
+You should receive a TwiML response.
+
+### 2. Test WebSocket Connection
+
+Use a WebSocket client:
+
+```bash
+wscat -c wss://your-tunnel-url.com/twilio/media-stream
+```
+
+### 3. Test with Actual Call
+
+```bash
+agenticai trigger --to +1234567890 --webhook-url https://your-tunnel-url.com
+```
+
+Your phone should ring!
+
+## Production Considerations
+
+<Warning>
+  For production deployments, avoid tunnels entirely. Deploy to a cloud provider with a public IP.
+</Warning>
+
+### Recommended Production Setup
+
+1. **Deploy to cloud** - AWS, GCP, Azure, DigitalOcean, etc.
+2. **Use a real domain** - e.g., `api.yourcompany.com`
+3. **Enable HTTPS** - Let's Encrypt or cloud provider SSL
+4. **Set up monitoring** - Track webhook health
+5. **Configure firewall** - Only allow Twilio IPs
+
+### When to Use Tunnels
+
+- Local development and testing
+- Demos and proof-of-concepts
+- Debugging webhook issues
+- Short-term staging environments
+
+### When NOT to Use Tunnels
+
+- Production deployments
+- High-traffic applications
+- Mission-critical services
+- Compliance-sensitive environments
+
+## Troubleshooting
+
+### Tunnel not connecting
+
+**ngrok:**
+```bash
+# Check if ngrok is running
+ps aux | grep ngrok
+
+# Restart tunnel
+pkill ngrok
+ngrok http 8080
+```
+
+**Cloudflare:**
+```bash
+# Check tunnel status
+cloudflared tunnel list
+cloudflared tunnel info agenticai
+
+# Check service logs
+sudo journalctl -u cloudflared -f
+```
+
+### Twilio can't reach webhook
+
+1. **Verify tunnel is running**:
+```bash
+curl https://your-tunnel-url.com/health
+```
+
+2. **Check Agentic AI server is running**:
+```bash
+agenticai service status
+```
+
+3. **Check firewall** - Ensure port 8080 is accessible locally
+
+4. **Check Twilio webhook logs**:
+   - Go to [Twilio Console](https://console.twilio.com/) → **Monitor** → **Logs** → **Errors**
+
+### Random disconnections
+
+- **ngrok free tier** - Has timeout limits, upgrade or switch to Cloudflare
+- **Network instability** - Check your internet connection
+- **Server crashes** - Check Agentic AI logs: `agenticai service logs`
+
+### URL changes on restart (ngrok)
+
+Free ngrok URLs are temporary. Options:
+
+1. **Upgrade to paid** - Get a fixed domain ($8/month)
+2. **Use Cloudflare Tunnel** - Free fixed domain
+3. **Script the update** - Auto-update Twilio webhooks on restart
+
+### SSL/TLS errors
+
+Twilio requires HTTPS. Both ngrok and Cloudflare provide automatic SSL:
+
+- ngrok: `https://abc123.ngrok.io` (automatic)
+- Cloudflare: `https://agenticai.yourdomain.com` (automatic)
+
+Do NOT use `http://` URLs with Twilio.
+
+## Advanced: Custom Tunnel Integration
+
+If you're using a different tunnel provider (localtunnel, bore, etc.), configure it manually:
+
+1. Start your custom tunnel
+2. Set `tunnel.enabled: false` in `config.yaml`
+3. Pass the webhook URL when starting:
+
+```bash
+agenticai service install --webhook-url https://your-custom-tunnel.com
+```
+
+## Related Configuration
+
+- [Configuration File](/configuration/config-file) - Server and tunnel settings
+- [Environment Variables](/configuration/environment) - API keys and credentials
+- [Quickstart Guide](/quickstart) - Complete setup walkthrough

@@ -1,0 +1,578 @@
+---
+title: 'OpenClaw Gateway'
+description: 'Connect to ClawdBot via OpenClaw Gateway for command execution'
+icon: 'plug'
+---
+
+## Overview
+
+The OpenClaw Gateway enables Agentic AI to execute commands through ClawdBot, a multi-skill AI agent that can:
+
+- **Control applications** - Open YouTube, Spotify, browsers, etc.
+- **Send messages** - WhatsApp, Telegram, email
+- **Search the web** - Google searches, lookup information
+- **Manage system** - Run commands, control device
+
+The gateway uses WebSocket for bidirectional communication between Agentic AI and ClawdBot.
+
+## Architecture
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  Agentic AI     │────▶│ OpenClaw Gateway │────▶│   ClawdBot      │
+│  (Voice Agent)  │◀────│  (ws://18789)    │◀────│   (Skills)      │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+         │                      │                         │
+         │                      │                         ▼
+    Intent Analysis      JSON-RPC 2.0           ┌─────────────────┐
+    "Play Spotify"        Protocol              │  YouTube Skill  │
+         │                      │               │  Spotify Skill  │
+         └──────────────────────┘               │  Email Skill    │
+              sessions_send                     │  Search Skill   │
+                                                 │  Message Skill  │
+                                                 └─────────────────┘
+```
+
+## How It Works
+
+<Steps>
+  <Step title="User speaks command">
+    "Open YouTube and search for Zayn Dusk Till Dawn"
+  </Step>
+
+  <Step title="Whisper transcribes">
+    Accurate transcription with proper nouns preserved
+  </Step>
+
+  <Step title="Brain analyzes intent">
+    Gemini determines this is an actionable command (not conversation)
+    
+    **Location**: `src/agenticai/core/conversation_brain.py:310`
+  </Step>
+
+  <Step title="Send to ClawdBot">
+    Forward natural language command via Gateway:
+    
+    ```python
+    await gateway.send_message(
+        ActionMessage(
+            call_id=call_id,
+            action_type="execute_command",
+            parameters={"command": "Open YouTube and search for Zayn Dusk Till Dawn"}
+        )
+    )
+    ```
+  </Step>
+
+  <Step title="ClawdBot executes">
+    ClawdBot's LLM interprets the command and routes to YouTube skill
+  </Step>
+
+  <Step title="Response spoken">
+    ClawdBot's response is fed back to OpenAI Realtime to speak to user:
+    
+    "Opening YouTube and searching for Zayn Dusk Till Dawn"
+  </Step>
+</Steps>
+
+## Installing ClawdBot
+
+<Steps>
+  <Step title="Install ClawdBot">
+    ```bash
+    npm install -g clawdbot
+    ```
+  </Step>
+
+  <Step title="Start ClawdBot agent">
+    ```bash
+    clawdbot agent --session-id agent:main:main
+    ```
+    
+    This starts ClawdBot in the background, ready to receive commands.
+  </Step>
+
+  <Step title="Start OpenClaw Gateway">
+    The gateway runs on port `18789` by default:
+    
+    ```bash
+    # Gateway should start automatically with ClawdBot
+    # If not, start manually:
+    openclaw-gateway --port 18789
+    ```
+  </Step>
+
+  <Step title="Verify connection">
+    ```bash
+    # Check if gateway is listening
+    curl ws://127.0.0.1:18789
+    ```
+  </Step>
+</Steps>
+
+## Configuration
+
+Configure the gateway connection in `config.yaml`:
+
+```yaml config.yaml
+gateway:
+  url: "ws://127.0.0.1:18789"  # Default gateway URL
+  reconnect_max_attempts: 10    # Retry up to 10 times
+  reconnect_base_delay: 1.0     # Start with 1s delay
+  reconnect_max_delay: 60.0     # Max 60s between retries
+```
+
+### Reconnection Strategy
+
+The gateway client uses exponential backoff for reconnection:
+
+- **Attempt 1**: Wait 1s
+- **Attempt 2**: Wait 2s
+- **Attempt 3**: Wait 4s
+- **Attempt 4**: Wait 8s
+- ...
+- **Attempt 10**: Wait 60s (max)
+
+Messages are queued during disconnection and sent when reconnected.
+
+## Gateway Protocol
+
+### JSON-RPC 2.0
+
+The gateway uses JSON-RPC 2.0 for communication:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "sessions_send",
+  "params": {
+    "message": {
+      "message_type": "action",
+      "call_id": "call_abc123",
+      "action_type": "execute_command",
+      "parameters": {
+        "command": "Play Shape of You on Spotify"
+      },
+      "timestamp": "2024-03-03T12:00:00Z"
+    }
+  }
+}
+```
+
+### Message Types
+
+**Location**: `src/agenticai/gateway/messages.py:1`
+
+<Tabs>
+  <Tab title="CallStartedMessage">
+    Sent when a call is initiated:
+    
+    ```python
+    CallStartedMessage(
+        call_id="call_abc123",
+        to_number="+15559876543",
+        prompt="Hello! How can I help you today?",
+        metadata={"user_id": "user_123"},
+    )
+    ```
+  </Tab>
+
+  <Tab title="TranscriptMessage">
+    Sent for conversation transcripts:
+    
+    ```python
+    TranscriptMessage(
+        call_id="call_abc123",
+        speaker="user",  # or "assistant"
+        text="Open YouTube",
+        timestamp="2024-03-03T12:00:00Z",
+        is_final=True,
+    )
+    ```
+  </Tab>
+
+  <Tab title="ActionMessage">
+    Sent when an action should be taken:
+    
+    ```python
+    ActionMessage(
+        call_id="call_abc123",
+        action_type="execute_command",
+        parameters={"command": "Play Spotify"},
+    )
+    ```
+  </Tab>
+
+  <Tab title="CallEndedMessage">
+    Sent when a call ends:
+    
+    ```python
+    CallEndedMessage(
+        call_id="call_abc123",
+        duration=120.5,  # seconds
+        outcome="completed",
+        full_transcript="User: Play music\nAssistant: Playing Spotify",
+        summary="User requested music playback",
+    )
+    ```
+  </Tab>
+
+  <Tab title="HeartbeatMessage">
+    Keepalive message sent every 30s:
+    
+    ```python
+    HeartbeatMessage()  # Automatic
+    ```
+  </Tab>
+</Tabs>
+
+## API Reference
+
+### GatewayClient
+
+**Location**: `src/agenticai/gateway/client.py:16`
+
+```python
+class GatewayClient:
+    def __init__(
+        self,
+        url: str = "ws://127.0.0.1:18789",
+        max_reconnect_attempts: int = 10,
+        reconnect_base_delay: float = 1.0,
+        reconnect_max_delay: float = 60.0,
+    ):
+        """Initialize the gateway client."""
+
+    @property
+    def is_connected(self) -> bool:
+        """Check if connected to gateway."""
+
+    async def connect(self) -> None:
+        """Connect to the gateway with automatic reconnection."""
+
+    async def disconnect(self) -> None:
+        """Disconnect from the gateway."""
+
+    async def send_message(self, message: GatewayMessage) -> None:
+        """Send a message to the gateway.
+        
+        Queues message if disconnected and sends when reconnected.
+        """
+```
+
+### Usage Example
+
+```python
+import asyncio
+from agenticai.gateway.client import GatewayClient
+from agenticai.gateway.messages import ActionMessage
+
+async def main():
+    client = GatewayClient(url="ws://127.0.0.1:18789")
+    
+    # Connect
+    await client.connect()
+    
+    # Wait for connection
+    await asyncio.sleep(1)
+    
+    if client.is_connected:
+        # Send command
+        await client.send_message(
+            ActionMessage(
+                call_id="test_call",
+                action_type="execute_command",
+                parameters={
+                    "command": "Open YouTube and search for python tutorial"
+                }
+            )
+        )
+        
+        print("Command sent to ClawdBot!")
+    
+    # Cleanup
+    await asyncio.sleep(5)
+    await client.disconnect()
+
+asyncio.run(main())
+```
+
+## ClawdBot Integration
+
+The Conversation Brain sends commands to ClawdBot:
+
+**Location**: `src/agenticai/core/conversation_brain.py:120`
+
+```python
+async def _send_to_clawdbot_async(self, command: str) -> str | None:
+    """Send command to ClawdBot agent and wait for response."""
+    
+    # Use clawdbot agent CLI
+    cmd = [
+        "clawdbot", "agent",
+        "--session-id", "agent:main:main",
+        "--message", command,
+        "--timeout", "90",
+    ]
+    
+    # Run async and capture output
+    process = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    
+    stdout, stderr = await asyncio.wait_for(
+        process.communicate(),
+        timeout=95
+    )
+    
+    response = stdout.decode('utf-8').strip()
+    return response
+```
+
+### Supported Commands
+
+ClawdBot skills handle various command types:
+
+| Command | ClawdBot Skill | Example |
+|---------|----------------|----------|
+| **YouTube** | youtube-skill | "Open YouTube and search for Zayn" |
+| **Spotify** | spotify-skill | "Play Shape of You on Spotify" |
+| **Email** | gog-skill | "Check my emails" |
+| **Messages** | message-skill | "Send hi to John on WhatsApp" |
+| **Web Search** | search-skill | "Search for nearby restaurants" |
+| **Browser** | browser-skill | "Open Google Chrome" |
+
+ClawdBot uses its own LLM to interpret commands and route to appropriate skills.
+
+## Conversation Flow
+
+Here's how voice commands flow through the system:
+
+<Steps>
+  <Step title="User speaks">
+    "Play my workout playlist on Spotify"
+  </Step>
+
+  <Step title="OpenAI Whisper transcribes">
+    **Location**: `src/agenticai/openai/realtime_handler.py:228`
+    
+    ```
+    === OPENAI USER TRANSCRIPT: Play my workout playlist on Spotify ===
+    ```
+  </Step>
+
+  <Step title="Brain analyzes intent">
+    **Location**: `src/agenticai/core/conversation_brain.py:310`
+    
+    Gemini determines:
+    - Intent: `action`
+    - Actionable: `true`
+    - Command: `"Play my workout playlist on Spotify"`
+  </Step>
+
+  <Step title="Send to ClawdBot">
+    **Location**: `src/agenticai/core/conversation_brain.py:272`
+    
+    ```python
+    response = await self._send_to_clawdbot_async(
+        "Play my workout playlist on Spotify"
+    )
+    ```
+  </Step>
+
+  <Step title="ClawdBot executes">
+    ClawdBot's Spotify skill:
+    1. Opens Spotify app
+    2. Searches for "workout playlist"
+    3. Starts playback
+    
+    Returns: `"Playing your workout playlist on Spotify"`
+  </Step>
+
+  <Step title="Speak response">
+    **Location**: `src/agenticai/core/conversation_brain.py:277`
+    
+    ```python
+    if response and self._on_clawdbot_response:
+        # Feed to OpenAI Realtime to speak
+        await self._on_clawdbot_response(response)
+    ```
+    
+    User hears: "Playing your workout playlist on Spotify"
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Gateway connection refused
+
+<Accordion title="Check ClawdBot is running">
+  ```bash
+  # Check if ClawdBot agent is running
+  ps aux | grep clawdbot
+  
+  # If not, start it
+  clawdbot agent --session-id agent:main:main
+  ```
+</Accordion>
+
+<Accordion title="Verify gateway port">
+  ```bash
+  # Check if port 18789 is listening
+  lsof -i :18789
+  
+  # Or test connection
+  curl ws://127.0.0.1:18789
+  ```
+</Accordion>
+
+<Accordion title="Check firewall">
+  Ensure port 18789 is not blocked:
+  
+  ```bash
+  # Linux
+  sudo ufw allow 18789
+  
+  # macOS
+  # Firewall typically allows localhost
+  ```
+</Accordion>
+
+### Commands not executing
+
+<Accordion title="Check ClawdBot logs">
+  ```bash
+  # View ClawdBot logs
+  clawdbot logs
+  
+  # Or check system logs
+  journalctl -u clawdbot -f
+  ```
+</Accordion>
+
+<Accordion title="Verify skill configuration">
+  Check ClawdBot skills are installed:
+  
+  ```bash
+  clawdbot skills list
+  ```
+  
+  Install missing skills:
+  ```bash
+  clawdbot skills install youtube-skill
+  clawdbot skills install spotify-skill
+  ```
+</Accordion>
+
+<Accordion title="Test command manually">
+  ```bash
+  clawdbot agent \
+    --session-id agent:main:main \
+    --message "Open YouTube and search for test"
+  ```
+  
+  Should execute immediately and return result.
+</Accordion>
+
+### High latency
+
+<Accordion title="Check ClawdBot timeout">
+  Default timeout is 90s. Commands should complete faster:
+  
+  **Location**: `src/agenticai/core/conversation_brain.py:144`
+  
+  ```python
+  "--timeout", "90",  # 90 second timeout
+  ```
+</Accordion>
+
+<Accordion title="Monitor command execution">
+  ```bash
+  # Watch for ClawdBot activity
+  agenticai service logs -f | grep "BRAIN: ClawdBot"
+  ```
+  
+  Should see:
+  ```
+  === BRAIN: Sending to ClawdBot agent ===
+  === BRAIN: ClawdBot response: ... ===
+  ```
+</Accordion>
+
+### Messages not queued during disconnection
+
+<Accordion title="Check queue size">
+  Default queue size is 1000 messages:
+  
+  **Location**: `src/agenticai/gateway/client.py:56`
+  
+  ```python
+  self._pending_messages: asyncio.Queue[GatewayMessage] = asyncio.Queue(maxsize=1000)
+  ```
+  
+  Messages beyond this are dropped with warning:
+  ```
+  Pending message queue full, dropping message
+  ```
+</Accordion>
+
+## Performance
+
+### Latency Breakdown
+
+| Step | Typical Latency |
+|------|----------------|
+| Speech → Whisper transcript | 200-500ms |
+| Intent analysis (Gemini) | 300-800ms |
+| Gateway send | < 10ms |
+| ClawdBot execution | 1-5s (varies by skill) |
+| Response → Speech | 200-500ms |
+| **Total** | **~2-7 seconds** |
+
+### Optimization Tips
+
+<Accordion title="Skip intent analysis for keywords">
+  The brain skips Gemini for obvious action keywords:
+  
+  **Location**: `src/agenticai/core/conversation_brain.py:339`
+  
+  ```python
+  action_keywords = [
+      "open", "play", "search", "find", "send",
+      "email", "message", "youtube", "spotify",
+  ]
+  
+  if any(kw in text_lower for kw in action_keywords):
+      return "action", {"original_request": text}, True
+  ```
+  
+  Saves 300-800ms for common commands.
+</Accordion>
+
+<Accordion title="Use faster ClawdBot skills">
+  Some skills are faster than others:
+  
+  - **Fast** (< 1s): Browser, YouTube, Spotify
+  - **Medium** (1-3s): Email check, web search
+  - **Slow** (3-5s+): Email compose, message send
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Conversation Brain" icon="brain" href="/concepts/conversation-brain">
+    Learn how intent analysis works
+  </Card>
+  <Card title="Gemini Integration" icon="sparkles" href="/integrations/gemini">
+    Configure Gemini for intent detection
+  </Card>
+  <Card title="ClawdBot Integration" icon="robot" href="/concepts/clawdbot-integration">
+    Deep dive into ClawdBot skills
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/concepts/architecture">
+    Understand the full system
+  </Card>
+</CardGroup>

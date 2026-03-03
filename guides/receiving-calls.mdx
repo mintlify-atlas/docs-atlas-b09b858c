@@ -1,0 +1,519 @@
+---
+title: Receiving Incoming Calls
+description: Configure Agentic AI to answer incoming phone calls automatically
+---
+
+Set up Agentic AI to automatically answer incoming calls to your Twilio phone number.
+
+## How It Works
+
+When someone calls your Twilio number:
+
+1. **Twilio receives the call** and requests TwiML instructions from your webhook
+2. **Server detects incoming call** and creates a session automatically
+3. **AI answers immediately** with a default or custom greeting
+4. **Natural conversation begins** powered by OpenAI Realtime API
+5. **Telegram notifications** (optional) send live transcripts
+
+Reference: `src/agenticai/server/app.py:86-159` (incoming call detection)
+
+## Prerequisites
+
+<Steps>
+
+### Step 1: Get a Twilio Phone Number
+
+Purchase a phone number from [Twilio Console](https://console.twilio.com/us1/develop/phone-numbers/manage/search):
+
+- Go to **Phone Numbers** → **Buy a number**
+- Search for numbers in your region
+- Choose a number with **Voice** capability
+- Click **Buy**
+
+### Step 2: Start the Server
+
+The server must be running to handle incoming calls:
+
+```bash
+agenticai server
+```
+
+Or run as a background service:
+
+```bash
+agenticai service start
+```
+
+### Step 3: Expose via Tunnel
+
+Twilio needs a public URL to reach your server:
+
+```bash
+agenticai tunnel start
+```
+
+Copy the public URL that appears (e.g., `https://abc123.ngrok.io`).
+
+</Steps>
+
+## Configure Twilio Webhook
+
+Point your Twilio number to the Agentic AI webhook:
+
+<Steps>
+
+### Step 1: Open Twilio Console
+
+Navigate to [Phone Numbers → Manage → Active Numbers](https://console.twilio.com/us1/develop/phone-numbers/manage/incoming)
+
+### Step 2: Select Your Number
+
+Click on the phone number you want to configure
+
+### Step 3: Configure Voice Settings
+
+Under **Voice & Fax** section:
+
+- **A call comes in:** Select **Webhook**
+- **URL:** Enter your webhook URL:
+  ```
+  https://your-subdomain.ngrok.io/twilio/voice
+  ```
+- **HTTP Method:** Select **POST**
+
+### Step 4: Save Configuration
+
+Click **Save** at the bottom of the page
+
+</Steps>
+
+<Note>
+Make sure to include `/twilio/voice` at the end of your webhook URL.
+</Note>
+
+## Test Incoming Calls
+
+Now test by calling your Twilio number:
+
+```bash
+# From your phone, dial your Twilio number
+# The AI should answer immediately!
+```
+
+**What you'll hear:**
+
+- The AI will greet you with the default prompt
+- It will listen and respond naturally
+- Transcripts appear in real-time (if Telegram is configured)
+
+## Customize the Greeting
+
+The default greeting comes from `config.yaml`:
+
+```yaml config.yaml
+gemini:
+  system_instruction: |
+    You are Alchemy, an AI agent created by Istiqlal.
+    Be helpful, friendly, and assist the caller with whatever they need.
+    You can send messages, search the web, make notes, and more.
+```
+
+### Custom Greeting Example
+
+```yaml config.yaml
+gemini:
+  system_instruction: |
+    You are the support assistant for Acme Corp.
+    Greet callers warmly and ask how you can help them today.
+    You can:
+    - Answer product questions
+    - Take support tickets
+    - Schedule callbacks
+    - Transfer to a human agent if needed
+    
+    Always be polite and professional.
+```
+
+<Tip>
+The `system_instruction` is used for ALL incoming calls unless overridden programmatically.
+</Tip>
+
+## Advanced Configuration
+
+### Programmatic Greeting Override
+
+You can detect incoming calls and customize behavior in the webhook handler.
+
+Reference implementation in `src/agenticai/server/app.py:130-145`:
+
+```python
+# When incoming call is detected:
+if not call_info:
+    # INCOMING CALL
+    logger.info("Incoming call detected", from_number=from_number)
+    
+    # Register this as an incoming call
+    call_id = await call_manager.register_incoming_call(
+        call_sid=call_sid,
+        from_number=from_number,
+        to_number=to_number,
+    )
+    
+    # Use custom prompt based on caller or time of day
+    prompt = config.gemini.system_instruction or default_prompt
+```
+
+### Caller-Specific Greetings
+
+You can customize greetings based on the caller's number:
+
+```python
+# Example: VIP caller detection
+VIP_NUMBERS = ["+15551234567", "+15559876543"]
+
+if from_number in VIP_NUMBERS:
+    prompt = "Welcome back! How can I assist you today?"
+else:
+    prompt = "Thank you for calling. How may I help you?"
+```
+
+### Time-Based Greetings
+
+```python
+from datetime import datetime
+
+hour = datetime.now().hour
+if 5 <= hour < 12:
+    greeting = "Good morning!"
+elif 12 <= hour < 17:
+    greeting = "Good afternoon!"
+else:
+    greeting = "Good evening!"
+
+prompt = f"{greeting} Thank you for calling. How can I help?"
+```
+
+## Incoming Call Flow
+
+Here's what happens when a call arrives:
+
+<Steps>
+
+### Step 1: Twilio Receives Call
+
+Twilio receives the incoming call and immediately makes a POST request to your webhook:
+
+```
+POST https://your-url.ngrok.io/twilio/voice
+
+Form Data:
+  CallSid: CA1234567890abcdef
+  From: +15551234567
+  To: +15559876543
+  Direction: inbound
+```
+
+### Step 2: Server Detects Incoming
+
+The server checks if this is an outbound call we initiated or an incoming call:
+
+```python
+call_info = call_manager.get_pending_call_info(call_sid)
+
+if not call_info:
+    # This is an incoming call!
+    call_id = await call_manager.register_incoming_call(...)
+```
+
+### Step 3: Session Created
+
+A new call session is created with:
+- Unique call ID
+- Caller's phone number
+- Default or custom prompt
+- Metadata (direction: "inbound")
+
+### Step 4: TwiML Returned
+
+Server responds with TwiML to connect the media stream:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect>
+    <Stream url="wss://your-url.ngrok.io/twilio/media-stream">
+      <Parameter name="prompt" value="..." />
+      <Parameter name="call_sid" value="CA123..." />
+    </Stream>
+  </Connect>
+</Response>
+```
+
+### Step 5: WebSocket Opens
+
+Twilio opens a WebSocket connection for bidirectional audio streaming.
+
+### Step 6: AI Conversation Begins
+
+OpenAI Realtime API:
+- Listens to the caller via Whisper STT
+- Generates responses
+- Speaks back using the configured voice
+
+</Steps>
+
+## Telegram Integration
+
+Get notified of incoming calls and see live transcripts:
+
+### Enable Telegram Notifications
+
+```yaml config.yaml
+telegram:
+  enabled: true
+  bot_token: ${TELEGRAM_BOT_TOKEN}
+  chat_id: ${TELEGRAM_CHAT_ID}
+```
+
+### What You'll Receive
+
+When an incoming call arrives:
+
+```
+📞 Call Started
+
+Call ID: `incoming_CA123...`
+To: +15559876543
+Prompt: You are Alchemy, an AI agent...
+
+Listening for transcripts...
+```
+
+During the call:
+
+```
+👤 User
+Hello, I need help with my order
+
+🤖 Assistant
+Of course! I'd be happy to help. Can you provide your order number?
+```
+
+When call ends:
+
+```
+✅ Call Ended
+
+Call ID: `incoming_CA123...`
+Duration: 142.3s
+Transcripts: 12
+Outcome: completed
+```
+
+Reference: `src/agenticai/telegram/direct_client.py`
+
+## Status Callbacks
+
+Track incoming call status changes:
+
+### Configure Status Callback
+
+In Twilio Console under your number's Voice settings:
+
+- **Status Callback URL:**
+  ```
+  https://your-url.ngrok.io/twilio/status
+  ```
+- **Status Events:** Select all that apply:
+  - `initiated`
+  - `ringing`
+  - `answered`
+  - `completed`
+
+### Handle Status Updates
+
+The server receives status updates throughout the call:
+
+```python
+# POST /twilio/status
+{
+  "CallSid": "CA1234567890abcdef",
+  "CallStatus": "completed",
+  "From": "+15551234567",
+  "To": "+15559876543"
+}
+```
+
+Reference: `src/agenticai/server/app.py:162-174`
+
+## Troubleshooting
+
+<Accordion title="Incoming calls not connecting">
+
+**Symptoms:** Caller hears ringing but no answer
+
+**Solutions:**
+
+1. Verify webhook URL is correct:
+   ```bash
+   curl https://your-url.ngrok.io/twilio/voice
+   # Should return 405 Method Not Allowed (GET not supported)
+   ```
+
+2. Check server is running:
+   ```bash
+   agenticai status
+   ```
+
+3. Test webhook URL accessibility:
+   ```bash
+   curl https://your-url.ngrok.io/health
+   # Should return: {"status":"healthy","active_calls":0}
+   ```
+
+4. Verify Twilio webhook configuration:
+   - Go to Twilio Console → Phone Numbers
+   - Check **Voice & Fax** settings
+   - Ensure URL ends with `/twilio/voice`
+   - Confirm HTTP method is **POST**
+
+</Accordion>
+
+<Accordion title="AI not speaking to caller">
+
+**Symptoms:** Call connects but AI is silent
+
+**Solutions:**
+
+1. Check server logs for WebSocket errors:
+   ```bash
+   agenticai service logs -f
+   ```
+
+2. Verify OpenAI API key is valid:
+   ```bash
+   agenticai test-connection
+   ```
+
+3. Confirm OpenAI Realtime API access:
+   - Realtime API may require waitlist approval
+   - Check your OpenAI account dashboard
+
+4. Test with different voice:
+   ```yaml
+   openai_realtime:
+     voice: "alloy"  # Try: alloy, echo, fable, onyx, nova, shimmer
+   ```
+
+</Accordion>
+
+<Accordion title="Call drops immediately">
+
+**Symptoms:** Call connects then drops after 1-2 seconds
+
+**Solutions:**
+
+1. WebSocket URL might be incorrect:
+   - Server logs should show "WebSocket connection accepted"
+   - Verify WSS (secure WebSocket) is used with HTTPS/ngrok
+
+2. Check firewall/security groups:
+   - Port 8080 must be accessible
+   - WebSocket upgrades must be allowed
+
+3. Increase timeout in uvicorn config:
+   ```python
+   # src/agenticai/server/app.py
+   uvicorn.run(
+       app,
+       timeout_keep_alive=120,  # Add this
+   )
+   ```
+
+</Accordion>
+
+<Accordion title="No Telegram notifications">
+
+**Symptoms:** Calls work but no Telegram messages
+
+**Solutions:**
+
+1. Verify Telegram is enabled:
+   ```yaml
+   telegram:
+     enabled: true  # Make sure this is true
+   ```
+
+2. Check bot token and chat ID:
+   ```bash
+   # Test manually:
+   curl https://api.telegram.org/bot<YOUR_TOKEN>/getMe
+   ```
+
+3. Ensure you've messaged the bot:
+   - Open Telegram and search for your bot
+   - Send any message (e.g., "hi")
+   - Then get your chat ID
+
+4. Get your chat ID:
+   ```bash
+   curl https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
+   # Find "chat":{"id":123456789}
+   ```
+
+Reference: `src/agenticai/telegram/direct_client.py:159-173`
+
+</Accordion>
+
+## API Endpoints
+
+### List Active Calls
+
+See all incoming and outbound calls:
+
+```bash
+curl http://localhost:8080/api/calls
+```
+
+**Response:**
+
+```json
+{
+  "calls": [
+    {
+      "call_id": "incoming_CA123...",
+      "to_number": "+15559876543",
+      "status": "in-progress",
+      "direction": "inbound"
+    }
+  ],
+  "count": 1
+}
+```
+
+### End an Active Call
+
+Programmatically end an incoming call:
+
+```bash
+curl -X POST http://localhost:8080/api/calls/incoming_CA123.../end
+```
+
+Reference: `src/agenticai/server/app.py:236-264`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Making Calls" icon="phone" href="/guides/making-calls">
+    Initiate outbound calls
+  </Card>
+  <Card title="Telegram Integration" icon="paper-plane" href="/guides/telegram-integration">
+    Set up live transcripts
+  </Card>
+  <Card title="Service Management" icon="server" href="/guides/service-management">
+    Run as a daemon
+  </Card>
+  <Card title="Scheduling" icon="calendar" href="/guides/scheduling-calls">
+    Automate recurring calls
+  </Card>
+</CardGroup>

@@ -1,0 +1,260 @@
+---
+title: agenticai trigger
+description: Quick trigger a phone call manually via the running server API
+---
+
+Triggers a phone call by calling the running server's API endpoint. This is the recommended way to initiate calls during development and testing.
+
+<Note>
+  The server must be running first (`agenticai server` or `agenticai service start`)
+</Note>
+
+## Usage
+
+```bash
+agenticai trigger [OPTIONS]
+```
+
+## Options
+
+<ParamField path="--to" type="string" required>
+  Phone number to call in E.164 format
+  
+  **Short form:** `-t`
+  
+  **Required:** Yes
+  
+  **Format:** Must include country code, e.g., `+15551234567`
+  
+  **Example:**
+  ```bash
+  agenticai trigger --to +15551234567
+  ```
+</ParamField>
+
+<ParamField path="--prompt" type="string" default="System instruction from config">
+  Custom prompt/instructions for the AI
+  
+  **Short form:** `-p`
+  
+  **Default:** Uses `gemini.system_instruction` from config.yaml, or falls back to `"You are a helpful AI assistant making a phone call."`
+  
+  **Example:**
+  ```bash
+  agenticai trigger -t +15551234567 -p "Ask about their appointment tomorrow"
+  ```
+</ParamField>
+
+<ParamField path="--webhook-url" type="string" default="$NGROK_URL">
+  Public webhook base URL for Twilio callbacks
+  
+  **Short form:** `-w`
+  
+  **Default:** Loaded from `NGROK_URL` environment variable
+  
+  **Required if:** `NGROK_URL` environment variable is not set
+  
+  **Example:**
+  ```bash
+  agenticai trigger -t +15551234567 -w https://abc123.ngrok.io
+  ```
+</ParamField>
+
+<ParamField path="--server-url" type="string" default="http://localhost:8080">
+  URL of the running Agentic AI server
+  
+  **Short form:** `-s`
+  
+  **Default:** `http://localhost:8080`
+  
+  **Example:**
+  ```bash
+  agenticai trigger -t +15551234567 -s http://localhost:3000
+  ```
+</ParamField>
+
+## How It Works
+
+1. Checks if the server is running (via `/health` endpoint)
+2. Sends a POST request to `/api/call` with call parameters
+3. Server initiates the call via Twilio
+4. Returns immediately with the call ID
+
+The call happens asynchronously - check server logs for progress.
+
+## Examples
+
+### Basic Usage
+
+With `NGROK_URL` environment variable set:
+
+```bash
+export NGROK_URL=https://abc123.ngrok.io
+agenticai trigger --to +15551234567
+```
+
+**Output:**
+```
+┌────────────────────────────────────────┐
+│ 📞 Triggering Call                     │
+│                                        │
+│ To: +15551234567                       │
+│ From: +18001234567                     │
+│ Webhook: https://abc123.ngrok.io       │
+└────────────────────────────────────────┘
+
+✓ Call initiated!
+  Call ID: CA1234567890abcdef1234567890abcdef
+
+The call is in progress. Check server logs for details.
+```
+
+### Custom Prompt
+
+Provide specific instructions for this call:
+
+```bash
+agenticai trigger \
+  --to +15551234567 \
+  --prompt "You are calling to confirm the appointment for tomorrow at 2 PM. Be polite and brief."
+```
+
+### Explicit Webhook URL
+
+Don't use environment variable:
+
+```bash
+agenticai trigger \
+  -t +15551234567 \
+  -w https://your-url.ngrok.io
+```
+
+### Custom Server Port
+
+If server is running on a different port:
+
+```bash
+agenticai trigger \
+  -t +15551234567 \
+  -s http://localhost:3000
+```
+
+## Workflow
+
+### Development
+
+```bash
+# Terminal 1: Start server
+agenticai server
+
+# Terminal 2: Start tunnel
+agenticai tunnel start
+# Copy the URL shown
+
+# Terminal 3: Set env and trigger calls
+export NGROK_URL=https://abc123.ngrok.io
+agenticai trigger --to +15551234567
+```
+
+### Production
+
+```bash
+# Service is already running with permanent webhook URL
+agenticai service status
+
+# Just trigger calls (NGROK_URL set in service)
+agenticai trigger --to +15551234567
+```
+
+## Error Handling
+
+### Server Not Running
+
+**Error:**
+```
+✗ Server not running at http://localhost:8080
+Start the server first: agenticai server
+```
+
+**Solution:**
+```bash
+# Start the server
+agenticai server
+
+# Or start the service
+agenticai service start
+```
+
+### Missing Webhook URL
+
+**Error:**
+```
+Error: --webhook-url required or set NGROK_URL environment variable
+
+Example: export NGROK_URL=https://your-subdomain.ngrok.io
+```
+
+**Solution:**
+```bash
+# Set environment variable
+export NGROK_URL=https://abc123.ngrok.io
+
+# Or provide explicitly
+agenticai trigger -t +15551234567 -w https://abc123.ngrok.io
+```
+
+### Invalid Phone Number
+
+**Error:**
+```
+✗ Error: Unable to create record: Invalid 'To' Phone Number
+```
+
+**Solution:** Use E.164 format with country code:
+```bash
+agenticai trigger --to +15551234567  # ✓ Correct
+agenticai trigger --to 5551234567    # ✗ Wrong
+```
+
+## API Request Format
+
+The trigger command sends:
+
+```http
+POST /api/call HTTP/1.1
+Host: localhost:8080
+Content-Type: application/json
+
+{
+  "to": "+15551234567",
+  "prompt": "You are a helpful AI assistant making a phone call.",
+  "webhook_url": "https://abc123.ngrok.io"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "call_id": "CA1234567890abcdef1234567890abcdef"
+}
+```
+
+## Difference from `agenticai call`
+
+| Feature | `trigger` | `call` |
+|---------|-----------|--------|
+| **Server required** | Yes, must be running | No, starts temporary session |
+| **Speed** | Fast (uses existing server) | Slower (initializes components) |
+| **Use case** | Development, testing, production | One-off calls, scripts |
+| **Logs** | Server logs | Console output |
+| **Waits for completion** | No (async) | Yes (blocks) |
+
+**Recommendation:** Use `trigger` for most scenarios. Use `call` only for standalone scripts.
+
+## See Also
+
+- [Server Command](/cli/server) - Start the webhook server
+- [Bot Command](/cli/bot) - Interactive OpenClaw terminal
+- [Call Command](/cli/trigger#difference-from-agenticai-call) - Direct call (no server)
+- [Status Command](/cli/status) - Check if server is running

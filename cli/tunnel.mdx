@@ -1,0 +1,416 @@
+---
+title: agenticai tunnel
+description: Manage tunnels for exposing local server to Twilio webhooks
+---
+
+Start and manage tunnels (ngrok or Cloudflare) to expose your local Agentic AI server to Twilio's webhooks. Twilio requires a public HTTPS URL to send call events.
+
+## Commands
+
+### agenticai tunnel start
+
+Start a tunnel to expose the local server.
+
+```bash
+agenticai tunnel start [OPTIONS]
+```
+
+#### Options
+
+<ParamField path="--provider" type="string" default="ngrok">
+  Tunnel provider to use
+  
+  **Short form:** `-p`
+  
+  **Options:** `ngrok` or `cloudflare`
+  
+  **Default:** `ngrok`
+  
+  **Example:**
+  ```bash
+  agenticai tunnel start --provider cloudflare
+  ```
+</ParamField>
+
+<ParamField path="--port" type="integer" default={8080}>
+  Local port to expose
+  
+  **Default:** `8080`
+  
+  **Example:**
+  ```bash
+  agenticai tunnel start --port 3000
+  ```
+</ParamField>
+
+### agenticai tunnel info
+
+Show tunnel setup information and options.
+
+```bash
+agenticai tunnel info
+```
+
+**Example Output:**
+```
+┌────────────────────────────────────────────────────┐
+│ Tunnel Options                                     │
+├────────────────────────────────────────────────────┤
+│ 1. ngrok (Default)                                 │
+│    • Free tier available                           │
+│    • Paid plans for fixed URLs                     │
+│    • Install: brew install ngrok                   │
+│    • Run: agenticai tunnel start                   │
+│                                                    │
+│ 2. Cloudflare Tunnel (Free alternative)           │
+│    • No account required                           │
+│    • Free random URL                               │
+│    • Install: brew install cloudflared             │
+│    • Run: agenticai tunnel start --provider cloudflare │
+│                                                    │
+│ After starting tunnel:                             │
+│    1. Copy the public URL shown                    │
+│    2. Set: export NGROK_URL=<url>                  │
+│    3. Install service: agenticai service install --webhook-url <url> │
+└────────────────────────────────────────────────────┘
+```
+
+## Tunnel Providers
+
+### ngrok (Default)
+
+[ngrok](https://ngrok.com/) provides secure tunnels to localhost.
+
+**Installation:**
+```bash
+# macOS
+brew install ngrok
+
+# Linux
+sudo snap install ngrok
+
+# Windows
+choco install ngrok
+
+# Or download from https://ngrok.com/download
+```
+
+**Usage:**
+```bash
+agenticai tunnel start
+```
+
+**Example Output:**
+```
+┌──────────────────────────────────────────┐
+│ Starting ngrok Tunnel                    │
+│                                          │
+│ Exposing: http://localhost:8080          │
+└──────────────────────────────────────────┘
+
+ngrok                                                           
+                                                                
+Session Status                online                            
+Account                       your-email@example.com (Plan: Free)
+Version                       3.6.0                             
+Region                        United States (us)                
+Latency                       25ms                              
+Web Interface                 http://127.0.0.1:4040             
+Forwarding                    https://abc123.ngrok.io -> http://localhost:8080
+                                                                
+Connections                   ttl     opn     rt1     rt5     p50     p90
+                              0       0       0.00    0.00    0.00    0.00
+```
+
+**Copy the HTTPS URL** (e.g., `https://abc123.ngrok.io`) and use it with:
+```bash
+export NGROK_URL=https://abc123.ngrok.io
+```
+
+**Free tier limitations:**
+- Random URL changes on each restart
+- Session timeout after 2 hours
+
+**Paid tier benefits:**
+- Fixed domain (e.g., `your-app.ngrok.io`)
+- No session timeout
+- Custom domains
+
+### Cloudflare Tunnel
+
+[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/) provides free tunnels without an account.
+
+**Installation:**
+```bash
+# macOS
+brew install cloudflared
+
+# Linux
+wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+sudo dpkg -i cloudflared-linux-amd64.deb
+
+# Windows
+choco install cloudflared
+
+# Or download from https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/
+```
+
+**Usage:**
+```bash
+agenticai tunnel start --provider cloudflare
+```
+
+**Example Output:**
+```
+┌──────────────────────────────────────────┐
+│ Starting Cloudflare Tunnel               │
+│                                          │
+│ Exposing: http://localhost:8080          │
+│ Free tunnel with random URL              │
+└──────────────────────────────────────────┘
+
+Copy the URL that appears and set it as AGENTICAI_WEBHOOK_URL
+Or use it with: agenticai service install --webhook-url <url>
+
+2026-03-03T10:30:45Z INF +--------------------------------------------------------------------------------------------+
+2026-03-03T10:30:45Z INF |  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |
+2026-03-03T10:30:45Z INF |  https://abc-def-123.trycloudflare.com                                                      |
+2026-03-03T10:30:45Z INF +--------------------------------------------------------------------------------------------+
+```
+
+**Copy the URL** (e.g., `https://abc-def-123.trycloudflare.com`) and use it.
+
+**Benefits:**
+- Completely free
+- No account required
+- No session timeout
+
+**Limitations:**
+- Random URL (changes on restart)
+- For permanent URLs, use Cloudflare Tunnel with an account
+
+## Examples
+
+### ngrok Tunnel
+
+```bash
+# Start ngrok tunnel (default)
+agenticai tunnel start
+
+# Custom port
+agenticai tunnel start --port 3000
+
+# Set environment variable
+export NGROK_URL=https://abc123.ngrok.io
+
+# Use in commands
+agenticai trigger --to +15551234567
+```
+
+### Cloudflare Tunnel
+
+```bash
+# Start Cloudflare tunnel
+agenticai tunnel start --provider cloudflare
+
+# Copy the URL shown
+# https://abc-def-123.trycloudflare.com
+
+# Use in service installation
+agenticai service install --webhook-url https://abc-def-123.trycloudflare.com
+```
+
+### Development Workflow
+
+```bash
+# Terminal 1: Start server
+agenticai server
+
+# Terminal 2: Start tunnel
+agenticai tunnel start
+# Copy URL: https://abc123.ngrok.io
+
+# Terminal 3: Set env and trigger calls
+export NGROK_URL=https://abc123.ngrok.io
+agenticai trigger --to +15551234567
+```
+
+### Production Setup
+
+For production, use a permanent tunnel:
+
+**Option 1: ngrok with custom domain (paid)**
+```bash
+# Requires ngrok paid plan
+ngrok http 8080 --domain your-app.ngrok.io
+
+# Install service with fixed URL
+agenticai service install --webhook-url https://your-app.ngrok.io
+```
+
+**Option 2: Cloudflare Tunnel with account (free)**
+```bash
+# Authenticate
+cloudflared tunnel login
+
+# Create tunnel
+cloudflared tunnel create agenticai
+
+# Configure and run
+cloudflared tunnel --url http://localhost:8080 route dns agenticai your-domain.com
+
+# Install service
+agenticai service install --webhook-url https://your-domain.com
+```
+
+**Option 3: Deploy to cloud**
+Deploy to a server with a public IP and use that URL directly (no tunnel needed).
+
+## Tunnel Management
+
+### Stop Tunnel
+
+Press `Ctrl+C` to stop the tunnel:
+
+```
+^C
+Tunnel stopped.
+```
+
+### Multiple Tunnels
+
+You can run multiple tunnels to different ports:
+
+```bash
+# Terminal 1: Server on 8080
+agenticai server --port 8080
+
+# Terminal 2: Tunnel for 8080
+agenticai tunnel start --port 8080
+
+# Terminal 3: Another service on 3000
+python -m http.server 3000
+
+# Terminal 4: Tunnel for 3000
+ngrok http 3000
+```
+
+### Tunnel Logs
+
+ngrok provides a web interface at [http://127.0.0.1:4040](http://127.0.0.1:4040) with:
+
+- Request inspector
+- Replay requests
+- Traffic logs
+- Connection status
+
+## Environment Variables
+
+### NGROK_URL
+
+Set the webhook URL for quick access:
+
+```bash
+# Set once
+export NGROK_URL=https://abc123.ngrok.io
+
+# Use in commands (webhook-url is optional)
+agenticai trigger --to +15551234567
+```
+
+Add to `.env` for persistence:
+```env
+NGROK_URL=https://abc123.ngrok.io
+```
+
+### AGENTICAI_WEBHOOK_URL
+
+Alternative env var for services:
+
+```bash
+export AGENTICAI_WEBHOOK_URL=https://abc123.ngrok.io
+```
+
+## Troubleshooting
+
+### ngrok Not Found
+
+**Error:** `ngrok not found.`
+
+**Solution:**
+```bash
+# macOS
+brew install ngrok
+
+# Or download from https://ngrok.com/download
+```
+
+### cloudflared Not Found
+
+**Error:** `cloudflared not found.`
+
+**Solution:**
+```bash
+# macOS
+brew install cloudflared
+
+# Or download from https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/
+```
+
+### Tunnel Connection Refused
+
+**Error:** Tunnel can't connect to localhost:8080
+
+**Solution:** Ensure server is running:
+```bash
+# Start server first
+agenticai server
+
+# Then start tunnel
+agenticai tunnel start
+```
+
+### Twilio Can't Reach Webhook
+
+**Checklist:**
+1. ✅ Tunnel is running
+2. ✅ Server is running
+3. ✅ Webhook URL uses HTTPS (not HTTP)
+4. ✅ URL is correct in Twilio Console
+5. ✅ Firewall allows connections
+
+**Test manually:**
+```bash
+curl https://your-url.ngrok.io/health
+# Should return: {"status":"ok"}
+```
+
+### ngrok Session Expired
+
+**Error:** Tunnel disconnected after 2 hours (free tier)
+
+**Solutions:**
+- Restart tunnel: `agenticai tunnel start`
+- Upgrade to ngrok paid plan for unlimited sessions
+- Use Cloudflare Tunnel (no timeout)
+
+## Security Notes
+
+<Warning>
+  Tunnels expose your local server to the internet. Only expose what's necessary.
+</Warning>
+
+**Best practices:**
+- Use tunnels only for Twilio webhooks
+- Don't expose development databases
+- Use authentication for sensitive endpoints
+- Monitor tunnel traffic
+- Use paid tunnels for production (fixed URLs, better security)
+
+## See Also
+
+- [Server Command](/cli/server) - Start the webhook server
+- [Service Commands](/cli/service) - Background service with permanent URL
+- [Trigger Command](/cli/trigger) - Test calls with webhook URL
+- [ngrok Documentation](https://ngrok.com/docs)
+- [Cloudflare Tunnel Docs](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/)

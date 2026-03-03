@@ -1,0 +1,299 @@
+---
+title: 'End Call'
+description: 'Terminate an active call programmatically'
+---
+
+## Endpoint
+
+```
+POST /api/calls/{call_id}/end
+```
+
+Ends an active call by its call ID. This immediately terminates the Twilio call, disconnects the media stream, and cleans up the session.
+
+## Path Parameters
+
+<ParamField path="call_id" type="string" required>
+  The unique identifier of the call to end. This is the `call_id` returned when initiating a call or listed in the active calls endpoint.
+</ParamField>
+
+## Request
+
+No request body is required.
+
+```bash
+POST /api/calls/{call_id}/end
+```
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates whether the call was successfully ended.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Success message confirming the call was ended.
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if `success` is `false`.
+</ResponseField>
+
+## Examples
+
+### End an Active Call
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/api/calls/a1b2c3d4-e5f6-7890-abcd-ef1234567890/end
+```
+
+```python Python
+import requests
+
+call_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+response = requests.post(f"http://localhost:8080/api/calls/{call_id}/end")
+
+result = response.json()
+if result["success"]:
+    print(f"Call ended: {result['message']}")
+else:
+    print(f"Error: {result['error']}")
+```
+
+```javascript JavaScript
+const callId = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+const response = await fetch(`http://localhost:8080/api/calls/${callId}/end`, {
+  method: 'POST'
+});
+
+const result = await response.json();
+if (result.success) {
+  console.log(`Call ended: ${result.message}`);
+} else {
+  console.log(`Error: ${result.error}`);
+}
+```
+</CodeGroup>
+
+**Success Response:**
+
+```json
+{
+  "success": true,
+  "message": "Call a1b2c3d4-e5f6-7890-abcd-ef1234567890 ended"
+}
+```
+
+### End Call After Duration
+
+```python
+import requests
+import time
+
+# Initiate a call
+response = requests.post(
+    "http://localhost:8080/api/call",
+    json={
+        "to": "+1234567890",
+        "prompt": "You are making a quick announcement.",
+        "webhook_url": "https://your-ngrok-url.ngrok.io"
+    }
+)
+
+call_id = response.json()["call_id"]
+print(f"Call initiated: {call_id}")
+
+# Wait for 30 seconds
+time.sleep(30)
+
+# End the call
+end_response = requests.post(f"http://localhost:8080/api/calls/{call_id}/end")
+print(f"Call ended: {end_response.json()}")
+```
+
+### End All Active Calls
+
+```python
+import requests
+
+# Get all active calls
+calls_response = requests.get("http://localhost:8080/api/calls")
+calls = calls_response.json()["calls"]
+
+print(f"Ending {len(calls)} active calls...")
+
+# End each call
+for call in calls:
+    response = requests.post(f"http://localhost:8080/api/calls/{call['call_id']}/end")
+    result = response.json()
+    
+    if result["success"]:
+        print(f"✓ Ended call {call['call_id']}")
+    else:
+        print(f"✗ Failed to end {call['call_id']}: {result['error']}")
+```
+
+## Error Responses
+
+### Call Not Found
+
+If the call ID doesn't exist or the call has already ended:
+
+```json
+{
+  "success": false,
+  "error": "Call not found"
+}
+```
+
+### Twilio API Error
+
+If there's an error communicating with Twilio (rare, as the session is cleaned up regardless):
+
+```json
+{
+  "success": false,
+  "error": "Twilio API error: Unable to fetch record"
+}
+```
+
+## Implementation Details
+
+When you call this endpoint, the server:
+
+1. **Validates** the call ID exists in active sessions
+2. **Retrieves** the `CallSession` object
+3. **Ends the Twilio call** via Twilio REST API
+4. **Stops the audio bridge** if it's running
+5. **Disconnects** the Gemini/OpenAI realtime connection
+6. **Calculates** the call duration
+7. **Sends notifications** (if configured):
+   - Call ended message to gateway
+   - Call summary to Telegram (if enabled)
+8. **Cleans up** session data from memory
+9. **Returns** success response
+
+<Warning>
+  Ending a call is **irreversible**. The call will be immediately terminated and all associated resources cleaned up.
+</Warning>
+
+## Use Cases
+
+### Time-Limited Calls
+
+Set a maximum duration for calls:
+
+```python
+import requests
+import threading
+
+def end_call_after_timeout(call_id, timeout_seconds):
+    """End a call after specified timeout."""
+    def end_call():
+        requests.post(f"http://localhost:8080/api/calls/{call_id}/end")
+        print(f"Call {call_id} ended after {timeout_seconds}s")
+    
+    timer = threading.Timer(timeout_seconds, end_call)
+    timer.start()
+    return timer
+
+# Initiate call
+response = requests.post(
+    "http://localhost:8080/api/call",
+    json={"to": "+1234567890", "webhook_url": "https://your-url.ngrok.io"}
+)
+
+call_id = response.json()["call_id"]
+
+# Auto-end after 60 seconds
+end_call_after_timeout(call_id, 60)
+```
+
+### Emergency Shutdown
+
+End all calls during maintenance:
+
+```bash
+#!/bin/bash
+# end-all-calls.sh
+
+echo "Ending all active calls..."
+
+# Get all calls
+calls=$(curl -s http://localhost:8080/api/calls | jq -r '.calls[].call_id')
+
+# End each call
+for call_id in $calls; do
+  echo "Ending call: $call_id"
+  curl -X POST "http://localhost:8080/api/calls/$call_id/end"
+done
+
+echo "All calls ended"
+```
+
+### Webhook-Triggered Termination
+
+End calls based on external events:
+
+```python
+from flask import Flask, request
+import requests
+
+app = Flask(__name__)
+
+@app.route('/webhook/end-call', methods=['POST'])
+def webhook_end_call():
+    """Webhook to end a call based on external trigger."""
+    data = request.json
+    call_id = data.get('call_id')
+    
+    if not call_id:
+        return {"error": "Missing call_id"}, 400
+    
+    # End the call
+    response = requests.post(
+        f"http://localhost:8080/api/calls/{call_id}/end"
+    )
+    
+    return response.json()
+
+if __name__ == '__main__':
+    app.run(port=5000)
+```
+
+## Call Cleanup Process
+
+When a call ends (either via this API or naturally):
+
+1. **Audio bridge stops**: No more audio flows between Twilio and AI
+2. **AI connection closes**: Gemini/OpenAI WebSocket disconnects
+3. **Duration calculated**: Time from start to end
+4. **Transcript saved**: Full conversation is retrieved (if configured)
+5. **Notifications sent**: 
+   - Telegram receives call summary
+   - Gateway receives `call_ended` message
+6. **Session removed**: Cleared from `active_sessions` dictionary
+7. **Resources freed**: Memory and connections released
+
+<Info>
+  After a call ends, it will no longer appear in the [List Calls](/api/rest/list-calls) endpoint.
+</Info>
+
+## Source Code Reference
+
+Implementation: `src/agenticai/server/app.py:252-264`
+
+Call cleanup logic: `src/agenticai/core/call_manager.py:432-453`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="List Active Calls" icon="list" href="/api/rest/list-calls">
+    View all calls before ending them
+  </Card>
+  
+  <Card title="Initiate New Call" icon="phone-arrow-up-right" href="/api/rest/initiate-call">
+    Start another call
+  </Card>
+</CardGroup>

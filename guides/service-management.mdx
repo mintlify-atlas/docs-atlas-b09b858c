@@ -1,0 +1,663 @@
+---
+title: Service Management
+description: Run Agentic AI as a background service with auto-start on boot
+---
+
+Learn how to run Agentic AI as a persistent background service using launchd (macOS) with automatic restart and logging.
+
+## Overview
+
+Agentic AI can run as a background service (daemon) that:
+
+- ✅ Starts automatically on login/boot
+- ✅ Restarts on crash
+- ✅ Runs the scheduler for automated calls
+- ✅ Logs to persistent files
+- ✅ Requires no manual intervention
+
+Reference: `src/agenticai/cli.py:722-1055` (service management commands)
+
+## Prerequisites
+
+<Steps>
+
+### Step 1: Complete Setup
+
+Ensure you've configured credentials:
+
+```bash
+agenticai setup
+```
+
+### Step 2: Get a Permanent Webhook URL
+
+For production, use a permanent tunnel instead of ngrok's temporary URLs:
+
+**Option A: Cloudflare Tunnel (Free)**
+
+```bash
+# Install cloudflared
+brew install cloudflared
+
+# Start permanent tunnel
+cloudflared tunnel --url http://localhost:8080
+```
+
+**Option B: ngrok with Fixed Domain (Paid)**
+
+```bash
+ngrok http 8080 --domain=your-subdomain.ngrok-free.app
+```
+
+Copy the URL for the next step.
+
+### Step 3: Test Server
+
+Verify the server works before installing as a service:
+
+```bash
+agenticai server
+```
+
+Press Ctrl+C to stop once verified.
+
+</Steps>
+
+## Install the Service
+
+Install Agentic AI as a launchd service:
+
+```bash
+agenticai service install --webhook-url https://your-permanent-url.com
+```
+
+**Example:**
+
+```bash
+agenticai service install --webhook-url https://abc123.trycloudflare.com
+```
+
+**What happens:**
+
+1. Creates a launchd plist file at:
+   ```
+   ~/Library/LaunchAgents/com.agenticai.server.plist
+   ```
+
+2. Configures auto-start on login
+
+3. Sets up crash recovery
+
+4. Creates log directory:
+   ```
+   /tmp/agenticai/
+   ```
+
+5. Loads the service (but doesn't start it yet)
+
+Reference: `src/agenticai/cli.py:828-891`
+
+## Service Commands
+
+### Start the Service
+
+```bash
+agenticai service start
+```
+
+**Output:**
+
+```
+✓ Service started
+View logs: tail -f /tmp/agenticai/agenticai.log
+```
+
+### Stop the Service
+
+```bash
+agenticai service stop
+```
+
+### Restart the Service
+
+```bash
+agenticai service restart
+```
+
+Useful after configuration changes.
+
+### Check Service Status
+
+```bash
+agenticai service status
+```
+
+**Example Output:**
+
+```
+┌────────────────────────────────────┐
+│   Agentic AI Service Status        │
+└────────────────────────────────────┘
+
+✓ Service installed
+  Plist: ~/Library/LaunchAgents/com.agenticai.server.plist
+
+✓ Service running (PID: 12345)
+
+Recent logs:
+  [2024-03-15 14:32:01] INFO: Starting Agentic AI server
+  [2024-03-15 14:32:02] INFO: Server running on 0.0.0.0:8080
+  [2024-03-15 14:32:02] INFO: Scheduler started
+  [2024-03-15 14:32:02] INFO: Next run: morning_check at 2024-03-16 09:00:00
+
+Full logs: tail -f /tmp/agenticai/agenticai.log
+```
+
+Reference: `src/agenticai/cli.py:993-1034`
+
+### View Logs
+
+**Follow logs in real-time:**
+
+```bash
+agenticai service logs --follow
+```
+
+Or use the shorthand:
+
+```bash
+agenticai service logs -f
+```
+
+**View last 50 lines:**
+
+```bash
+agenticai service logs
+```
+
+**View last 100 lines:**
+
+```bash
+agenticai service logs --lines 100
+```
+
+Reference: `src/agenticai/cli.py:1036-1055`
+
+### Uninstall the Service
+
+```bash
+agenticai service uninstall
+```
+
+This:
+- Stops the service
+- Removes the plist file
+- Preserves logs in `/tmp/agenticai/`
+
+Reference: `src/agenticai/cli.py:893-912`
+
+## Service Configuration
+
+The service is configured via a launchd plist file.
+
+### Plist Location
+
+```
+~/Library/LaunchAgents/com.agenticai.server.plist
+```
+
+### Generated Configuration
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.agenticai.server</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/agenticai</string>
+        <string>server</string>
+    </array>
+    
+    <key>WorkingDirectory</key>
+    <string>/path/to/project</string>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>AGENTICAI_WEBHOOK_URL</key>
+        <string>https://your-url.com</string>
+    </dict>
+    
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+    
+    <key>StandardOutPath</key>
+    <string>/tmp/agenticai/agenticai.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/tmp/agenticai/agenticai-error.log</string>
+    
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+</dict>
+</plist>
+```
+
+Reference: `src/agenticai/cli.py:728-786`
+
+### Key Configuration Options
+
+| Option | Description |
+|--------|-------------|
+| `RunAtLoad` | Start service when loaded (on login) |
+| `KeepAlive` | Automatically restart if crashed |
+| `ThrottleInterval` | Wait 10 seconds between restart attempts |
+| `StandardOutPath` | Log stdout to file |
+| `StandardErrorPath` | Log stderr to separate file |
+
+## Daemon Mode
+
+Alternatively, run in daemon mode without installing as a service:
+
+```bash
+agenticai daemon --webhook-url https://your-url.com
+```
+
+This:
+- Starts the server
+- Starts the scheduler
+- Shows next scheduled call times
+- Runs in foreground (use Ctrl+C to stop)
+
+**Example Output:**
+
+```
+Starting Agentic AI in daemon mode
+Scheduler started
+  morning_check: 2024-03-16 09:00:00
+  weekly_report: 2024-03-17 17:00:00
+INFO:     Started server process [12345]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8080
+```
+
+Reference: `src/agenticai/cli.py:257-308`
+
+<Note>
+Daemon mode is useful for testing, but service mode is recommended for production.
+</Note>
+
+## Logs and Monitoring
+
+### Log Files
+
+| File | Content |
+|------|--------|
+| `/tmp/agenticai/agenticai.log` | Standard output (INFO logs) |
+| `/tmp/agenticai/agenticai-error.log` | Error output (ERROR logs) |
+
+### Tail Logs
+
+**Standard logs:**
+
+```bash
+tail -f /tmp/agenticai/agenticai.log
+```
+
+**Error logs:**
+
+```bash
+tail -f /tmp/agenticai/agenticai-error.log
+```
+
+**Both logs:**
+
+```bash
+tail -f /tmp/agenticai/agenticai*.log
+```
+
+### Log Rotation
+
+For production, set up log rotation:
+
+```bash
+# Create newsyslog config
+sudo nano /etc/newsyslog.d/agenticai.conf
+```
+
+Add:
+
+```
+# logfilename          [owner:group]    mode count size when  flags
+/tmp/agenticai/*.log                    644  7     10M   *     J
+```
+
+This rotates logs:
+- Keep 7 backups
+- Rotate when size exceeds 10MB
+- Compress old logs (J flag)
+
+## Auto-Start on Boot
+
+The service automatically starts on login by default.
+
+### Verify Auto-Start
+
+1. Install the service:
+   ```bash
+   agenticai service install --webhook-url https://your-url.com
+   ```
+
+2. Restart your computer
+
+3. Check service status:
+   ```bash
+   agenticai service status
+   ```
+
+You should see:
+
+```
+✓ Service running (PID: xxxx)
+```
+
+### Disable Auto-Start
+
+If you want manual control:
+
+```bash
+# Unload from auto-start
+launchctl unload ~/Library/LaunchAgents/com.agenticai.server.plist
+
+# Start manually when needed
+agenticai service start
+```
+
+## Crash Recovery
+
+The service automatically restarts if it crashes.
+
+### How It Works
+
+```xml
+<key>KeepAlive</key>
+<dict>
+    <key>SuccessfulExit</key>
+    <false/>  <!-- Don't restart on clean exit -->
+    <key>Crashed</key>
+    <true/>   <!-- DO restart on crash -->
+</dict>
+
+<key>ThrottleInterval</key>
+<integer>10</integer>  <!-- Wait 10s between restarts -->
+```
+
+Reference: `src/agenticai/cli.py:767-782`
+
+### Test Crash Recovery
+
+1. Find the service PID:
+   ```bash
+   agenticai service status
+   # Output: Service running (PID: 12345)
+   ```
+
+2. Kill the process:
+   ```bash
+   kill -9 12345
+   ```
+
+3. Wait 10 seconds
+
+4. Check status again:
+   ```bash
+   agenticai service status
+   # Should show new PID
+   ```
+
+## Update Webhook URL
+
+To change the webhook URL:
+
+```bash
+# Uninstall old service
+agenticai service uninstall
+
+# Reinstall with new URL
+agenticai service install --webhook-url https://new-url.com
+
+# Start the service
+agenticai service start
+```
+
+## Troubleshooting
+
+<Accordion title="Service won't start">
+
+**Symptoms:** `agenticai service start` fails
+
+**Solutions:**
+
+1. Check if already running:
+   ```bash
+   agenticai service status
+   ```
+
+2. Check for port conflicts:
+   ```bash
+   lsof -i :8080
+   # Kill conflicting process or change port in config.yaml
+   ```
+
+3. Verify plist exists:
+   ```bash
+   ls -la ~/Library/LaunchAgents/com.agenticai.server.plist
+   ```
+
+4. Check error logs:
+   ```bash
+   cat /tmp/agenticai/agenticai-error.log
+   ```
+
+5. Validate plist syntax:
+   ```bash
+   plutil -lint ~/Library/LaunchAgents/com.agenticai.server.plist
+   ```
+
+Reference: `src/agenticai/cli.py:789-820`
+
+</Accordion>
+
+<Accordion title="Service starts but crashes immediately">
+
+**Symptoms:** Service shows as running but PID disappears
+
+**Solutions:**
+
+1. Check error logs:
+   ```bash
+   tail -50 /tmp/agenticai/agenticai-error.log
+   ```
+
+2. Common issues:
+   - Missing environment variables in `.env`
+   - Invalid Twilio/OpenAI credentials
+   - Port 8080 already in use
+   - Config.yaml syntax errors
+
+3. Test manually first:
+   ```bash
+   agenticai server
+   # Look for error messages
+   ```
+
+4. Verify all services:
+   ```bash
+   agenticai test-connection
+   ```
+
+</Accordion>
+
+<Accordion title="Logs not appearing">
+
+**Symptoms:** `/tmp/agenticai/` is empty or outdated
+
+**Solutions:**
+
+1. Check log directory exists:
+   ```bash
+   ls -la /tmp/agenticai/
+   ```
+
+2. Create directory manually:
+   ```bash
+   mkdir -p /tmp/agenticai
+   ```
+
+3. Check permissions:
+   ```bash
+   chmod 755 /tmp/agenticai
+   ```
+
+4. Restart service:
+   ```bash
+   agenticai service restart
+   ```
+
+Reference: `src/agenticai/cli.py:852`
+
+</Accordion>
+
+<Accordion title="Service doesn't auto-start on login">
+
+**Symptoms:** Must manually start service after reboot
+
+**Solutions:**
+
+1. Verify plist is loaded:
+   ```bash
+   launchctl list | grep agenticai
+   # Should show: com.agenticai.server
+   ```
+
+2. Reload the plist:
+   ```bash
+   launchctl unload ~/Library/LaunchAgents/com.agenticai.server.plist
+   launchctl load ~/Library/LaunchAgents/com.agenticai.server.plist
+   ```
+
+3. Check `RunAtLoad` is true:
+   ```bash
+   grep -A 1 "RunAtLoad" ~/Library/LaunchAgents/com.agenticai.server.plist
+   # Should show: <true/>
+   ```
+
+4. Reinstall service:
+   ```bash
+   agenticai service uninstall
+   agenticai service install --webhook-url https://your-url.com
+   ```
+
+</Accordion>
+
+## Advanced: Custom Service Configuration
+
+For advanced users, you can manually edit the plist:
+
+```bash
+nano ~/Library/LaunchAgents/com.agenticai.server.plist
+```
+
+### Add Environment Variables
+
+```xml
+<key>EnvironmentVariables</key>
+<dict>
+    <key>AGENTICAI_WEBHOOK_URL</key>
+    <string>https://your-url.com</string>
+    
+    <!-- Add custom variables -->
+    <key>LOG_LEVEL</key>
+    <string>debug</string>
+    
+    <key>MAX_CONCURRENT_CALLS</key>
+    <string>10</string>
+</dict>
+```
+
+### Change Log Location
+
+```xml
+<key>StandardOutPath</key>
+<string>/var/log/agenticai/agenticai.log</string>
+
+<key>StandardErrorPath</key>
+<string>/var/log/agenticai/agenticai-error.log</string>
+```
+
+### Reload After Changes
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.agenticai.server.plist
+launchctl load ~/Library/LaunchAgents/com.agenticai.server.plist
+```
+
+## Monitoring Service Health
+
+### Check Service is Running
+
+```bash
+curl http://localhost:8080/health
+```
+
+**Expected:**
+
+```json
+{
+  "status": "healthy",
+  "active_calls": 0
+}
+```
+
+### List Active Calls
+
+```bash
+curl http://localhost:8080/api/calls
+```
+
+### macOS Activity Monitor
+
+1. Open **Activity Monitor**
+2. Search for "agenticai"
+3. View CPU, memory usage, and PID
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Scheduling Calls" icon="calendar" href="/guides/scheduling-calls">
+    Automate calls with schedules
+  </Card>
+  <Card title="Making Calls" icon="phone" href="/guides/making-calls">
+    Trigger outbound calls
+  </Card>
+  <Card title="Receiving Calls" icon="phone-incoming" href="/guides/receiving-calls">
+    Handle incoming calls
+  </Card>
+  <Card title="Telegram Integration" icon="paper-plane" href="/guides/telegram-integration">
+    Monitor calls via Telegram
+  </Card>
+</CardGroup>

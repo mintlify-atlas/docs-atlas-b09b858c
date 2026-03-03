@@ -1,0 +1,219 @@
+---
+title: Environment Variables
+description: Complete reference for all environment variables used in Agentic AI
+icon: key
+---
+
+Agentic AI uses environment variables to store sensitive credentials and API keys. These are loaded from a `.env` file at runtime.
+
+<Warning>
+  Never commit your `.env` file to version control. The `.env.example` file is provided as a template.
+</Warning>
+
+## Setup
+
+1. Copy the example file:
+```bash
+cp .env.example .env
+```
+
+2. Fill in your credentials in `.env`
+3. The config.yaml file references these variables using `${VAR_NAME}` syntax
+
+## Required Variables
+
+These environment variables must be set for Agentic AI to function properly.
+
+### Twilio Configuration
+
+<ParamField path="TWILIO_ACCOUNT_SID" type="string" required>
+  Your Twilio Account SID, found in the [Twilio Console](https://console.twilio.com/).
+  
+  Format: `ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` (34 characters starting with "AC")
+</ParamField>
+
+<ParamField path="TWILIO_AUTH_TOKEN" type="string" required>
+  Your Twilio Auth Token for authenticating API requests.
+  
+  <Warning>This is sensitive - treat it like a password!</Warning>
+</ParamField>
+
+<ParamField path="TWILIO_PHONE_NUMBER" type="string" required>
+  The Twilio phone number to make calls from.
+  
+  Format: `+1XXXXXXXXXX` (E.164 format with country code)
+  
+  Example: `+15551234567`
+</ParamField>
+
+### Gemini Configuration
+
+<ParamField path="GEMINI_API_KEY" type="string" required>
+  Your Google Gemini API key for AI intent analysis.
+  
+  Get your key from [Google AI Studio](https://aistudio.google.com/apikey).
+</ParamField>
+
+### OpenAI Configuration
+
+<ParamField path="OPENAI_API_KEY" type="string" required>
+  Your OpenAI API key for Realtime API and Whisper STT.
+  
+  Get your key from [OpenAI Platform](https://platform.openai.com/api-keys).
+  
+  <Warning>Requires access to the Realtime API (gpt-4o-realtime)</Warning>
+  
+  Format: `sk-proj-...` or `sk-...`
+</ParamField>
+
+### Telegram Configuration
+
+<ParamField path="TELEGRAM_BOT_TOKEN" type="string" required>
+  Your Telegram bot token for sending live transcripts and updates.
+  
+  Get this from [@BotFather](https://t.me/BotFather) on Telegram.
+  
+  Example: `1234567890:ABCdefGHIjklMNOpqrsTUVwxyz`
+</ParamField>
+
+<ParamField path="TELEGRAM_CHAT_ID" type="string" required>
+  The Telegram chat ID where transcripts will be sent.
+  
+  **How to find your Chat ID:**
+  1. Message your bot on Telegram (say "hi")
+  2. Visit: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`
+  3. Find `"chat":{"id":123456789}` - that number is your Chat ID
+  
+  Example: `123456789`
+</ParamField>
+
+## Optional Variables
+
+These variables are optional and used for specific features.
+
+### Ngrok Configuration
+
+<ParamField path="NGROK_AUTHTOKEN" type="string">
+  Your ngrok authentication token for creating tunnels.
+  
+  Get your token from [ngrok Dashboard](https://dashboard.ngrok.com/get-started/your-authtoken).
+  
+  Only needed if using ngrok for tunneling. You can also use the CLI directly:
+  ```bash
+  ngrok http 8080
+  ```
+</ParamField>
+
+<ParamField path="NGROK_URL" type="string">
+  A fixed ngrok URL if you have a paid plan with reserved domains.
+  
+  Example: `https://myapp.ngrok.io`
+  
+  If not set, ngrok will generate a random URL each time.
+</ParamField>
+
+## Example .env File
+
+```bash
+# Agentic AI Environment Variables
+# Copy this file to .env and fill in your values
+# NEVER commit .env to version control!
+
+# ===================
+# TWILIO CONFIGURATION
+# ===================
+# Get these from https://console.twilio.com/
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=your_twilio_auth_token_here
+TWILIO_PHONE_NUMBER=+1XXXXXXXXXX
+
+# ===================
+# GEMINI CONFIGURATION
+# ===================
+# Get this from https://aistudio.google.com/apikey
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# ===================
+# TELEGRAM CONFIGURATION
+# ===================
+# Get bot token from @BotFather on Telegram
+# Get chat ID by messaging your bot and checking https://api.telegram.org/bot<TOKEN>/getUpdates
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+TELEGRAM_CHAT_ID=your_telegram_chat_id_here
+
+# ===================
+# OPENAI CONFIGURATION (Realtime API + Whisper STT)
+# ===================
+# Get this from https://platform.openai.com/api-keys
+OPENAI_API_KEY=your_openai_api_key_here
+
+# ===================
+# OPTIONAL: NGROK (for local development)
+# ===================
+# If using ngrok for webhooks
+# NGROK_AUTHTOKEN=your_ngrok_auth_token
+```
+
+## Environment Variable Expansion
+
+In `config.yaml`, environment variables are referenced using `${VAR_NAME}` syntax:
+
+```yaml
+twilio:
+  account_sid: ${TWILIO_ACCOUNT_SID}
+  auth_token: ${TWILIO_AUTH_TOKEN}
+```
+
+### Default Values
+
+You can provide default values using the syntax `${VAR_NAME:default}`:
+
+```yaml
+twilio:
+  from_number: ${TWILIO_PHONE_NUMBER:+1XXXXXXXXXX}
+```
+
+If `TWILIO_PHONE_NUMBER` is not set, it will use `+1XXXXXXXXXX` as the default.
+
+<Note>
+  The config loader automatically expands environment variables at runtime. See `config.py:113-134` for implementation details.
+</Note>
+
+## Security Best Practices
+
+<Warning>
+  Follow these security guidelines to protect your credentials:
+</Warning>
+
+1. **Never commit `.env`** - It's in `.gitignore` by default
+2. **Use strong API keys** - Rotate them regularly
+3. **Restrict permissions** - Use API keys with minimal required permissions
+4. **Keep tokens secret** - Don't share them in logs, screenshots, or chat
+5. **Use environment-specific files** - `.env.production`, `.env.development`, etc.
+6. **Set file permissions** - `chmod 600 .env` to restrict access
+
+## Troubleshooting
+
+### Missing Environment Variables
+
+If you see errors about missing variables:
+
+```bash
+# Check which variables are loaded
+python -c "from dotenv import load_dotenv; import os; load_dotenv(); print(os.environ.get('TWILIO_ACCOUNT_SID'))"
+```
+
+### Wrong .env Location
+
+The config loader looks for `.env` in:
+1. Current working directory
+2. Project root (parent of `src/agenticai/core/config.py`)
+
+See `config.py:13-15` for the loading logic.
+
+### Variables Not Expanding
+
+If `${VAR_NAME}` appears literally in your config:
+- Check that the variable is set in `.env`
+- Verify the syntax: `${VAR_NAME}` or `${VAR_NAME:default}`
+- Check for typos in variable names (case-sensitive!)

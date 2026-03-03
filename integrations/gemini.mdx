@@ -1,0 +1,530 @@
+---
+title: 'Gemini API'
+description: 'Use Gemini for intent analysis and conversation understanding'
+icon: 'sparkles'
+---
+
+## Overview
+
+Gemini powers the "brain" of Agentic AI, analyzing user intent to determine if spoken requests are actionable commands or casual conversation. This enables the system to intelligently route commands to ClawdBot for execution.
+
+## Role in the System
+
+Gemini has two uses in Agentic AI:
+
+<CardGroup cols={2}>
+  <Card title="Intent Analysis" icon="brain">
+    Analyzes transcripts to determine if user wants to DO something
+    
+    **Model**: `gemini-3-flash-preview`
+    
+    **Location**: `src/agenticai/core/conversation_brain.py:76`
+  </Card>
+
+  <Card title="Alternative Voice API" icon="microphone">
+    Can replace OpenAI Realtime for voice conversations (optional)
+    
+    **Model**: `gemini-2.5-flash-native-audio-latest`
+    
+    **Location**: `src/agenticai/gemini/realtime_handler.py:13`
+  </Card>
+</CardGroup>
+
+## Primary Use: Intent Analysis
+
+The Conversation Brain uses Gemini to classify user intent:
+
+```
+User says: "Play Shape of You on Spotify"
+           ↓
+    Whisper transcribes (accurate)
+           ↓
+    Gemini analyzes intent
+           ↓
+    Result: Actionable = YES
+           ↓
+    Forward to ClawdBot → Execute
+```
+
+### How It Works
+
+**Location**: `src/agenticai/core/conversation_brain.py:310`
+
+```python
+async def _analyze_intent(self, user_text: str) -> tuple[str, dict | None, bool]:
+    """Analyze user text to determine if it's actionable."""
+    
+    # Quick heuristics first (skip LLM for obvious cases)
+    if text_lower in ["hi", "hello", "thanks", "ok"]:
+        return "conversation", None, False
+    
+    if any(kw in text_lower for kw in ["open", "play", "search", "send"]):
+        return "action", {"original_request": user_text}, True
+    
+    # Use Gemini for ambiguous cases
+    prompt = f"""
+    Is this a request to DO something?
+    
+    User said: "{user_text}"
+    
+    Answer with just ONE word: YES or NO
+    """
+    
+    response = self.client.models.generate_content(
+        model="gemini-3-flash-preview",
+        contents=prompt,
+    )
+    
+    is_actionable = response.text.strip().upper().startswith("YES")
+    return ("action" if is_actionable else "conversation", ...)
+```
+
+## Getting a Gemini API Key
+
+<Steps>
+  <Step title="Go to Google AI Studio">
+    Visit [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+  </Step>
+
+  <Step title="Sign in with Google account">
+    Use any Google account (free to create)
+  </Step>
+
+  <Step title="Create API key">
+    Click **Create API key** or **Get API key**
+    
+    The key will be shown immediately (starts with `AIza...`)
+  </Step>
+
+  <Step title="Copy and secure">
+    Copy the API key and store it securely. You can view it again in AI Studio if needed.
+  </Step>
+</Steps>
+
+## Configuration
+
+Add your Gemini API key to `.env`:
+
+```bash .env
+# Gemini Configuration
+GEMINI_API_KEY=AIzaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Configure Gemini in `config.yaml`:
+
+```yaml config.yaml
+gemini:
+  api_key: ${GEMINI_API_KEY}
+  model: "gemini-3-flash-preview"  # Fast model for intent analysis
+  voice: "Zephyr"  # Only used if using Gemini Live API
+  system_instruction: |
+    You are a helpful AI assistant making phone calls on behalf of the user.
+    Be concise, professional, and friendly.
+```
+
+## Intent Classification Examples
+
+Here are examples of how Gemini classifies different requests:
+
+### Actionable Commands (YES)
+
+| User Says | Intent | Reason |
+|-----------|--------|--------|
+| "Open YouTube" | Action | Command to open app |
+| "Play Shape of You on Spotify" | Action | Command to play music |
+| "Send hi to John on WhatsApp" | Action | Command to send message |
+| "Check my emails" | Action | Command to check emails |
+| "Search for nearby restaurants" | Action | Command to search web |
+| "What's the weather today?" | Action | Query requiring external data |
+| "Set a timer for 5 minutes" | Action | Command to set timer |
+
+### Conversational (NO)
+
+| User Says | Intent | Reason |
+|-----------|--------|--------|
+| "Hello" | Conversation | Greeting |
+| "Thanks" | Conversation | Acknowledgment |
+| "How are you?" | Conversation | Small talk |
+| "That's great" | Conversation | Reaction |
+| "Tell me a joke" | Conversation | Casual request (no external action) |
+| "What can you do?" | Conversation | Question about capabilities |
+
+## Optimization: Quick Heuristics
+
+The brain uses heuristics to skip Gemini calls for obvious cases:
+
+**Location**: `src/agenticai/core/conversation_brain.py:325`
+
+```python
+# Skip LLM for greetings (saves 300-800ms)
+non_actionable_phrases = [
+    "hi", "hello", "hey", "thanks", "ok",
+    "bye", "goodbye", "nevermind",
+]
+
+if text_lower in non_actionable_phrases:
+    return "conversation", None, False
+
+# Quick actionable keywords (skip LLM, go to ClawdBot)
+action_keywords = [
+    "open", "play", "search", "send",
+    "email", "youtube", "spotify",
+]
+
+if any(kw in text_lower for kw in action_keywords):
+    return "action", {"original_request": text}, True
+```
+
+This optimization:
+- Saves 300-800ms per request
+- Reduces Gemini API costs
+- Improves response time for common commands
+
+## API Reference
+
+### ConversationBrain
+
+**Location**: `src/agenticai/core/conversation_brain.py:76`
+
+```python
+class ConversationBrain:
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gemini-3-flash-preview",
+        telegram_chat_id: str = "",
+        call_id: str = "",
+    ):
+        """Initialize the conversation brain.
+        
+        Args:
+            api_key: Gemini API key
+            model: Model for intent understanding
+            telegram_chat_id: Telegram chat ID for ClawdBot
+            call_id: Call identifier
+        """
+
+    def set_callbacks(
+        self,
+        on_command: Callable[[str, dict], Awaitable[None]] | None = None,
+        on_clawdbot_response: Callable[[str], Awaitable[None]] | None = None,
+    ):
+        """Set event callbacks."""
+
+    def add_user_transcript(self, text: str):
+        """Add user transcript fragment."""
+
+    async def flush_user_turn(self):
+        """Flush buffered user transcript and analyze intent."""
+
+    def add_assistant_transcript(self, text: str):
+        """Add assistant transcript fragment."""
+
+    async def flush_assistant_turn(self):
+        """Flush buffered assistant transcript."""
+
+    def get_memory_summary(self) -> str:
+        """Get conversation summary."""
+```
+
+### Usage Example
+
+```python
+import asyncio
+from agenticai.core.conversation_brain import ConversationBrain
+
+async def main():
+    brain = ConversationBrain(
+        api_key="AIzaxxx",
+        model="gemini-3-flash-preview",
+        call_id="call_123",
+    )
+    
+    # Set callbacks
+    async def handle_command(action: str, params: dict):
+        print(f"Execute: {action} with {params}")
+    
+    async def speak_response(text: str):
+        print(f"Speak: {text}")
+    
+    brain.set_callbacks(
+        on_command=handle_command,
+        on_clawdbot_response=speak_response,
+    )
+    
+    # Add user transcript
+    brain.add_user_transcript("Play")
+    brain.add_user_transcript(" Spotify")
+    
+    # Flush and analyze
+    await brain.flush_user_turn()
+    # Output: Execute: execute_command with {'command': 'Play Spotify'}
+
+asyncio.run(main())
+```
+
+## Alternative: Gemini Live API
+
+Gemini also offers a Live API for voice conversations (alternative to OpenAI Realtime):
+
+### Pros
+
+- **Free tier available** - More generous than OpenAI
+- **Native audio** - No separate transcription needed
+- **Multiple voices** - Including "Zephyr", "Puck", etc.
+
+### Cons
+
+- **Less accurate transcription** - Especially for proper nouns
+- **Higher latency** - ~500-1000ms vs OpenAI's 200-500ms
+- **Limited voice options** - Fewer voices than OpenAI
+
+### Configuration
+
+To use Gemini Live instead of OpenAI Realtime:
+
+```yaml config.yaml
+# Disable OpenAI Realtime
+openai_realtime:
+  enabled: false
+
+# Enable Gemini Live
+gemini:
+  api_key: ${GEMINI_API_KEY}
+  model: "models/gemini-2.5-flash-native-audio-latest"
+  voice: "Zephyr"
+```
+
+### Implementation Reference
+
+**Location**: `src/agenticai/gemini/realtime_handler.py:13`
+
+```python
+from agenticai.gemini.realtime_handler import GeminiRealtimeHandler
+
+handler = GeminiRealtimeHandler(
+    api_key="AIzaxxx",
+    model="models/gemini-2.5-flash-native-audio-latest",
+    voice="Zephyr",
+)
+
+# Similar API to OpenAI Realtime
+handler.set_callbacks(
+    on_audio=handle_audio,
+    on_user_transcript=handle_transcript,
+)
+
+await handler.connect()
+await handler.send_audio(audio_bytes)
+```
+
+## Conversation Memory
+
+The brain maintains conversation context:
+
+**Location**: `src/agenticai/core/conversation_brain.py:29`
+
+```python
+@dataclass 
+class ConversationMemory:
+    """Memory for the conversation."""
+    call_id: str
+    turns: list[ConversationTurn] = field(default_factory=list)
+    context: dict = field(default_factory=dict)
+    extracted_info: dict = field(default_factory=dict)
+    
+    def add_turn(self, speaker: str, text: str, intent: str = None, command: dict = None):
+        """Add a conversation turn."""
+        turn = ConversationTurn(
+            speaker=speaker,
+            text=text,
+            timestamp=datetime.now(),
+            intent=intent,
+            command=command,
+        )
+        self.turns.append(turn)
+    
+    def get_recent_context(self, max_turns: int = 10) -> str:
+        """Get recent conversation as string."""
+        recent = self.turns[-max_turns:]
+        lines = []
+        for turn in recent:
+            speaker = "User" if turn.speaker == "user" else "Assistant"
+            lines.append(f"{speaker}: {turn.text}")
+        return "\n".join(lines)
+```
+
+### Context in Intent Analysis
+
+Recent conversation context helps Gemini classify ambiguous requests:
+
+```python
+context = self.memory.get_recent_context(5)
+
+prompt = f"""
+Recent conversation:
+{context}
+
+User said: "{user_text}"
+
+Is this a request to DO something? YES or NO
+"""
+```
+
+## Cost and Pricing
+
+### Gemini API Pricing
+
+**Text Models** (for intent analysis):
+
+| Model | Input | Output |
+|-------|-------|--------|
+| gemini-3-flash-preview | Free (15 RPM) | Free (15 RPM) |
+| gemini-2.0-flash | $0.075 / 1M tokens | $0.30 / 1M tokens |
+| gemini-1.5-flash | $0.075 / 1M tokens | $0.30 / 1M tokens |
+
+**Audio Models** (for voice conversations):
+
+| Model | Input Audio | Output Audio |
+|-------|-------------|-------------|
+| gemini-2.5-flash-native-audio | Free (15 RPM) | Free (15 RPM) |
+
+### Cost Comparison
+
+**Intent Analysis** (per 1000 calls):
+
+- **Gemini**: ~$0.01 (with free tier: $0)
+- **Prompt size**: ~100 tokens per call
+- **Response size**: ~5 tokens ("YES" or "NO")
+
+**Voice Conversations** (per minute):
+
+- **Gemini Live**: Free (15 RPM limit)
+- **OpenAI Realtime**: $0.30/min
+
+## Troubleshooting
+
+### API key invalid
+
+<Accordion title="Verify key format">
+  Gemini API keys start with `AIza`:
+  
+  ```bash
+  echo $GEMINI_API_KEY  # Should start with AIza
+  ```
+</Accordion>
+
+<Accordion title="Test authentication">
+  ```bash
+  curl -H "Content-Type: application/json" \
+    -d '{"contents":[{"parts":[{"text":"Hello"}]}]}' \
+    "https://generativelanguage.googleapis.com/v1/models/gemini-3-flash-preview:generateContent?key=$GEMINI_API_KEY"
+  ```
+  
+  Should return a valid response (not 401/403).
+</Accordion>
+
+### Intent analysis too slow
+
+<Accordion title="Check heuristics">
+  Verify quick heuristics are working:
+  
+  ```bash
+  agenticai service logs -f | grep "BRAIN: Quick"
+  ```
+  
+  Should see:
+  ```
+  === BRAIN: Quick skip (greeting/short) ===
+  === BRAIN: Quick action keyword detected ===
+  ```
+</Accordion>
+
+<Accordion title="Use faster model">
+  Switch to fastest Gemini model:
+  
+  ```yaml config.yaml
+  gemini:
+    model: "gemini-3-flash-preview"  # Fastest
+  ```
+</Accordion>
+
+### Commands not detected
+
+<Accordion title="Check Gemini response">
+  ```bash
+  agenticai service logs -f | grep "Actionable"
+  ```
+  
+  Should see:
+  ```
+  === BRAIN: Actionable=True (LLM said: YES) ===
+  ```
+</Accordion>
+
+<Accordion title="Add more action keywords">
+  Expand keyword list for instant detection:
+  
+  **Location**: `src/agenticai/core/conversation_brain.py:339`
+  
+  ```python
+  action_keywords = [
+      "open", "play", "search", "send",
+      "email", "message", "youtube", "spotify",
+      "call", "text", "find", "show",  # Add more
+  ]
+  ```
+</Accordion>
+
+### Rate limit exceeded
+
+<Accordion title="Check free tier limits">
+  Gemini free tier:
+  - **15 requests per minute** (RPM)
+  - **1500 requests per day** (RPD)
+  
+  Monitor usage at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+</Accordion>
+
+<Accordion title="Upgrade to paid tier">
+  For higher limits, enable billing:
+  1. Go to [console.cloud.google.com](https://console.cloud.google.com/)
+  2. Enable billing for your project
+  3. Limits increase to 1000 RPM
+</Accordion>
+
+## Performance
+
+### Latency Breakdown
+
+| Operation | Typical Latency |
+|-----------|----------------|
+| Quick heuristic (keyword match) | < 1ms |
+| Quick heuristic (phrase match) | < 1ms |
+| Gemini API call | 300-800ms |
+| **Average** (with heuristics) | **~100ms** |
+
+### Optimization Results
+
+With heuristics enabled:
+
+- **60-70%** of requests skip Gemini entirely
+- **~500ms saved** on average per request
+- **Lower API costs** (fewer Gemini calls)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Conversation Brain" icon="brain" href="/concepts/conversation-brain">
+    Deep dive into intent analysis
+  </Card>
+  <Card title="OpenClaw Gateway" icon="plug" href="/integrations/openclaw-gateway">
+    Learn how commands are executed
+  </Card>
+  <Card title="OpenAI Realtime" icon="microphone" href="/integrations/openai-realtime">
+    Compare voice API options
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/concepts/architecture">
+    Understand the full system flow
+  </Card>
+</CardGroup>

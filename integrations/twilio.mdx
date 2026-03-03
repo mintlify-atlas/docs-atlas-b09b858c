@@ -1,0 +1,365 @@
+---
+title: 'Twilio Integration'
+description: 'Set up Twilio for voice calls and media streaming with Agentic AI'
+icon: 'phone'
+---
+
+## Overview
+
+Twilio provides the telephony infrastructure for Agentic AI, enabling both outbound and inbound voice calls. The integration uses two main Twilio services:
+
+- **Twilio REST API** - Initiates outbound calls and manages call state
+- **Twilio Media Streams** - Bidirectional audio streaming via WebSocket
+
+## Architecture
+
+The Twilio integration connects phone calls to the AI voice agent:
+
+```
+┌─────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   Phone     │────▶│   Twilio Cloud   │────▶│  Agentic AI     │
+│   (User)    │◀────│   (Media Streams)│◀────│  Server         │
+└─────────────┘     └──────────────────┘     └─────────────────┘
+                           │
+                           ▼
+                    WebSocket @ /twilio/media-stream
+                    REST API  @ /twilio/voice
+```
+
+## Getting Twilio Credentials
+
+<Steps>
+  <Step title="Sign up for Twilio">
+    Go to [console.twilio.com](https://console.twilio.com/) and create a free account. You'll get $15 in trial credit.
+  </Step>
+
+  <Step title="Find your credentials">
+    From the Twilio Console dashboard:
+    - Copy your **Account SID** (starts with `AC...`)
+    - Copy your **Auth Token** (click to reveal)
+    - Note these down for your `.env` file
+  </Step>
+
+  <Step title="Get a phone number">
+    Navigate to **Phone Numbers** → **Manage** → **Buy a number**
+    
+    - Select a country and search for available numbers
+    - Choose a number with **Voice** capability
+    - Complete the purchase (free with trial credit)
+    - Copy the phone number in E.164 format (e.g., `+15551234567`)
+  </Step>
+</Steps>
+
+## Configuration
+
+Add your Twilio credentials to `.env`:
+
+```bash .env
+# Twilio Configuration
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=your_auth_token_here
+TWILIO_PHONE_NUMBER=+15551234567
+```
+
+The `config.yaml` references these variables:
+
+```yaml config.yaml
+twilio:
+  account_sid: ${TWILIO_ACCOUNT_SID}
+  auth_token: ${TWILIO_AUTH_TOKEN}
+  from_number: ${TWILIO_PHONE_NUMBER}
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  webhook_path: "/twilio/voice"      # TwiML webhook
+  websocket_path: "/twilio/media-stream"  # Media Streams
+```
+
+## Setting Up Webhooks
+
+Twilio needs a public URL to reach your server. Use ngrok or another tunnel:
+
+<Steps>
+  <Step title="Start the tunnel">
+    ```bash
+    agenticai tunnel start
+    # or directly: ngrok http 8080
+    ```
+    
+    Copy the public URL (e.g., `https://abc123.ngrok.io`)
+  </Step>
+
+  <Step title="Configure incoming calls">
+    In the Twilio Console:
+    
+    1. Go to **Phone Numbers** → **Manage** → **Active numbers**
+    2. Click your phone number
+    3. Under "Voice & Fax" → "A call comes in":
+       - Select **Webhook**
+       - Enter: `https://your-tunnel-url.ngrok.io/twilio/voice`
+       - Method: **HTTP POST**
+    4. Click **Save**
+  </Step>
+
+  <Step title="Test the connection">
+    Call your Twilio number from any phone. The AI should answer!
+  </Step>
+</Steps>
+
+## Making Outbound Calls
+
+Initiate calls using the CLI or REST API:
+
+### Using the CLI
+
+```bash
+agenticai trigger \
+  --to +15559876543 \
+  --webhook-url https://your-tunnel.ngrok.io
+```
+
+### Using Python
+
+```python
+from agenticai.twilio.client import TwilioClient
+
+client = TwilioClient(
+    account_sid="ACxxxx",
+    auth_token="your_token",
+    from_number="+15551234567"
+)
+
+call_sid = client.initiate_call(
+    to_number="+15559876543",
+    webhook_url="https://your-server.com/twilio/voice",
+)
+
+print(f"Call initiated: {call_sid}")
+```
+
+## Media Streams Protocol
+
+Twilio Media Streams uses WebSocket for bidirectional audio:
+
+### Audio Format
+
+- **Codec**: μ-law (G.711)
+- **Sample rate**: 8 kHz
+- **Encoding**: Base64
+- **Chunk size**: 20ms (160 bytes)
+
+### Event Flow
+
+<Steps>
+  <Step title="connected">
+    WebSocket connection established
+  </Step>
+
+  <Step title="start">
+    Stream metadata received:
+    - `streamSid` - Stream identifier
+    - `callSid` - Call identifier
+    - `tracks` - Audio tracks (inbound/outbound)
+  </Step>
+
+  <Step title="media (incoming)">
+    Audio chunks from the phone user:
+    ```json
+    {
+      "event": "media",
+      "media": {
+        "payload": "base64_encoded_mulaw_audio"
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="media (outgoing)">
+    Send audio to the phone user:
+    ```json
+    {
+      "event": "media",
+      "streamSid": "MZxxxxx",
+      "media": {
+        "payload": "base64_encoded_mulaw_audio"
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="stop">
+    Stream ended (call disconnected)
+  </Step>
+</Steps>
+
+### Implementation Reference
+
+The WebSocket handler is in `src/agenticai/twilio/websocket.py:36`:
+
+```python
+from agenticai.twilio.websocket import TwilioMediaStreamHandler
+
+# Create handler
+handler = TwilioMediaStreamHandler(websocket)
+
+# Set callbacks
+handler.set_callbacks(
+    on_audio=handle_audio_from_phone,
+    on_start=handle_stream_start,
+    on_stop=handle_stream_stop,
+)
+
+# Accept connection
+await handler.accept()
+await handler.receive_loop()
+```
+
+## Audio Conversion
+
+Agentic AI converts between Twilio's μ-law format and PCM for AI processing:
+
+- **Twilio → AI**: μ-law 8kHz → PCM 24kHz
+- **AI → Twilio**: PCM 24kHz → μ-law 8kHz
+
+Conversion is handled automatically by `src/agenticai/audio/converter.py:1`.
+
+## API Reference
+
+### TwilioClient
+
+**Location**: `src/agenticai/twilio/client.py:10`
+
+```python
+class TwilioClient:
+    def initiate_call(
+        self,
+        to_number: str,
+        webhook_url: str,
+        status_callback_url: str | None = None,
+        timeout: int = 30,
+    ) -> str:
+        """Initiate an outbound call.
+        
+        Returns:
+            Call SID
+        """
+
+    def get_call_status(self, call_sid: str) -> dict:
+        """Get call status information."""
+
+    def end_call(self, call_sid: str) -> None:
+        """End an active call."""
+
+    def list_active_calls(self) -> list[dict]:
+        """List all active calls."""
+```
+
+### TwilioMediaStreamHandler
+
+**Location**: `src/agenticai/twilio/websocket.py:36`
+
+```python
+class TwilioMediaStreamHandler:
+    def set_callbacks(
+        self,
+        on_audio: Callable[[str], Awaitable[None]] | None = None,
+        on_start: Callable[[StreamMetadata], Awaitable[None]] | None = None,
+        on_stop: Callable[[], Awaitable[None]] | None = None,
+    ):
+        """Set event callbacks."""
+
+    async def send_audio(self, payload: str) -> None:
+        """Send base64-encoded μ-law audio to phone."""
+
+    async def send_clear(self) -> None:
+        """Clear audio buffer (for interruptions)."""
+```
+
+## Troubleshooting
+
+### No audio from caller
+
+<Accordion title="Check WebSocket connection">
+  Verify the Media Stream WebSocket is connecting:
+  
+  ```bash
+  agenticai service logs -f | grep "TWILIO STREAM"
+  ```
+  
+  You should see:
+  ```
+  === TWILIO STREAM CONNECTED ===
+  === TWILIO: First audio received from phone! ===
+  ```
+</Accordion>
+
+<Accordion title="Verify webhook URL">
+  - Ensure ngrok/tunnel is running
+  - Check Twilio Console webhook configuration
+  - Test webhook URL responds: `curl https://your-url.ngrok.io/twilio/voice`
+</Accordion>
+
+### No audio to caller
+
+<Accordion title="Check audio conversion">
+  Audio must be converted to μ-law 8kHz for Twilio:
+  
+  ```bash
+  agenticai service logs -f | grep "TWILIO: Sent"
+  ```
+  
+  Should see:
+  ```
+  === TWILIO: First audio sent to phone! ===
+  ```
+</Accordion>
+
+### Call not connecting
+
+<Accordion title="Verify credentials">
+  - Check Account SID starts with `AC`
+  - Verify Auth Token is correct
+  - Ensure phone number includes country code: `+1` for US
+</Accordion>
+
+<Accordion title="Check trial limitations">
+  Twilio trial accounts can only call verified numbers:
+  
+  1. Go to **Phone Numbers** → **Verified Caller IDs**
+  2. Add the number you want to call
+  3. Complete verification via SMS or voice call
+</Accordion>
+
+## Rate Limits
+
+### Free Trial
+
+- $15.50 credit included
+- ~$0.0085/min for voice calls
+- Can only call verified phone numbers
+- Calls include trial disclaimer message
+
+### Paid Account
+
+- ~$1/month per phone number
+- ~$0.0085/min for voice calls (US)
+- No verification required for outbound calls
+- No trial disclaimer
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="OpenAI Realtime" icon="microphone" href="/integrations/openai-realtime">
+    Set up AI voice processing
+  </Card>
+  <Card title="Making Calls" icon="phone-arrow-up-right" href="/guides/making-calls">
+    Learn to initiate outbound calls
+  </Card>
+  <Card title="Receiving Calls" icon="phone-arrow-down-left" href="/guides/receiving-calls">
+    Configure inbound call handling
+  </Card>
+  <Card title="Tunnel Setup" icon="network-wired" href="/configuration/tunnel-setup">
+    Configure ngrok for webhooks
+  </Card>
+</CardGroup>

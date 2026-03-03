@@ -1,0 +1,377 @@
+---
+title: Common Issues
+description: Solutions to frequently encountered problems with Agentic AI
+---
+
+This guide covers the most common issues you may encounter when using Agentic AI and their solutions.
+
+## Call Issues
+
+<Accordion title="Call not connecting">
+  **Symptoms:** Outbound calls fail to connect or incoming calls aren't answered.
+
+  **Solutions:**
+  
+  1. **Verify Twilio credentials:**
+     ```bash
+     # Check your .env file
+     cat .env | grep TWILIO
+     ```
+     Ensure `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_PHONE_NUMBER` are correctly set.
+
+  2. **Confirm Twilio phone number is voice-enabled:**
+     - Go to [Twilio Console](https://console.twilio.com/) → Phone Numbers
+     - Verify your number has "Voice" capability
+
+  3. **Check webhook URL configuration:**
+     ```bash
+     # Test if your webhook URL is accessible
+     curl https://your-ngrok-url.ngrok.io/health
+     ```
+     The webhook must be publicly accessible for Twilio to reach it.
+
+  4. **Verify ngrok/tunnel is running:**
+     ```bash
+     # Check if ngrok is active
+     curl http://localhost:4040/api/tunnels
+     ```
+
+  <Note>For incoming calls, ensure your Twilio number webhook is set to `https://your-url.ngrok.io/twilio/voice`</Note>
+</Accordion>
+
+<Accordion title="No audio or AI not speaking">
+  **Symptoms:** Call connects but no audio is heard, or AI doesn't respond.
+
+  **Solutions:**
+
+  1. **Verify OpenAI Realtime API access:**
+     ```bash
+     # Check if API key is set
+     echo $OPENAI_API_KEY
+     ```
+     Ensure your OpenAI account has access to the Realtime API.
+
+  2. **Confirm model configuration:**
+     Check `config.yaml` for correct model name:
+     ```yaml
+     openai_realtime:
+       enabled: true
+       model: "gpt-4o-realtime-preview-2024-12-17"
+       voice: "alloy"
+     ```
+
+  3. **Check for WebSocket errors:**
+     ```bash
+     agenticai service logs -f | grep -i "websocket\|audio\|openai"
+     ```
+
+  4. **Verify audio format compatibility:**
+     The service uses mulaw 8kHz audio. Check logs at `/tmp/agenticai/agenticai.log` for audio conversion errors.
+
+  <Warning>If using Gemini instead of OpenAI, ensure `gemini.api_key` is valid and the model supports native audio</Warning>
+</Accordion>
+
+<Accordion title="Call drops or disconnects unexpectedly">
+  **Symptoms:** Calls start successfully but disconnect after a few seconds or minutes.
+
+  **Solutions:**
+
+  1. **Check server stability:**
+     ```bash
+     agenticai service status
+     ```
+     Ensure the service is running and not crashing.
+
+  2. **Review error logs:**
+     ```bash
+     tail -n 100 /tmp/agenticai/agenticai-error.log
+     ```
+     Look for exceptions or connection errors.
+
+  3. **Verify WebSocket connection stability:**
+     Check for timeout or connection reset errors in logs:
+     ```bash
+     grep -i "timeout\|reset\|closed" /tmp/agenticai/agenticai.log
+     ```
+
+  4. **Increase timeout values:**
+     If you're experiencing timeouts, the WebSocket may be closing due to inactivity. Check your tunnel provider's timeout settings.
+
+  <Note>Free ngrok tunnels have session limits. Consider using a paid plan or Cloudflare tunnels for production</Note>
+</Accordion>
+
+## Configuration Issues
+
+<Accordion title="Environment variables not loaded">
+  **Symptoms:** Error messages about missing credentials or "Configuration file not found".
+
+  **Solutions:**
+
+  1. **Verify .env file exists:**
+     ```bash
+     ls -la .env
+     ```
+     If missing, copy from template:
+     ```bash
+     cp .env.example .env
+     ```
+
+  2. **Check file location:**
+     The `.env` file must be in the project root directory where you run `agenticai` commands.
+
+  3. **Validate environment variable format:**
+     ```bash
+     # Correct format (no spaces around =)
+     TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+     
+     # Incorrect format
+     TWILIO_ACCOUNT_SID = ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+     ```
+
+  4. **Source environment variables:**
+     ```bash
+     # Load environment variables
+     export $(cat .env | xargs)
+     ```
+
+  <Tip>Use the setup wizard for guided configuration: `agenticai setup`</Tip>
+</Accordion>
+
+<Accordion title="Invalid API keys or authentication errors">
+  **Symptoms:** "Authentication failed", "Invalid API key", or "Unauthorized" errors.
+
+  **Solutions:**
+
+  1. **Test each API key individually:**
+     
+     **Twilio:**
+     ```bash
+     agenticai test-connection
+     ```
+     
+     **OpenAI:**
+     ```bash
+     curl https://api.openai.com/v1/models \
+       -H "Authorization: Bearer $OPENAI_API_KEY"
+     ```
+     
+     **Gemini:**
+     ```bash
+     curl "https://generativelanguage.googleapis.com/v1/models?key=$GEMINI_API_KEY"
+     ```
+
+  2. **Regenerate API keys:**
+     - Twilio: [console.twilio.com](https://console.twilio.com/)
+     - OpenAI: [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+     - Gemini: [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+
+  3. **Check for hidden characters:**
+     ```bash
+     # Remove any whitespace from API keys
+     sed -i 's/ //g' .env
+     ```
+
+  <Warning>Never commit `.env` files to version control. Use `.env.example` for templates only</Warning>
+</Accordion>
+
+<Accordion title="Port already in use">
+  **Symptoms:** "Address already in use" error when starting the server.
+
+  **Solutions:**
+
+  1. **Check what's using the port:**
+     ```bash
+     lsof -i :8080
+     # or
+     netstat -tulpn | grep 8080
+     ```
+
+  2. **Kill the process:**
+     ```bash
+     # Kill process by port
+     kill -9 $(lsof -t -i:8080)
+     ```
+
+  3. **Use a different port:**
+     ```bash
+     agenticai server --port 8081
+     ```
+     Or update `config.yaml`:
+     ```yaml
+     server:
+       port: 8081
+     ```
+
+  4. **Stop existing service:**
+     ```bash
+     agenticai service stop
+     ```
+</Accordion>
+
+## Integration Issues
+
+<Accordion title="ClawdBot not responding">
+  **Symptoms:** AI acknowledges commands but ClawdBot doesn't execute them.
+
+  **Solutions:**
+
+  1. **Verify OpenClaw Gateway is running:**
+     ```bash
+     # Check if gateway is accessible
+     curl -I ws://127.0.0.1:18789
+     ```
+
+  2. **Ensure ClawdBot agent is started:**
+     ```bash
+     clawdbot agent --session-id agent:main:main
+     ```
+
+  3. **Check gateway URL in config:**
+     ```yaml
+     # In config.yaml
+     gateway:
+       url: "ws://127.0.0.1:18789"
+     ```
+
+  4. **Test gateway connection:**
+     ```bash
+     agenticai bot
+     # Then type: status
+     ```
+
+  5. **Verify ClawdBot skills are configured:**
+     Check that the specific skills (YouTube, Spotify, Email) are properly configured in ClawdBot.
+
+  <Note>Gateway integration is optional. Comment out gateway client initialization in call_manager.py:92-99 if not using ClawdBot</Note>
+</Accordion>
+
+<Accordion title="Telegram messages not sending">
+  **Symptoms:** Call transcripts and commands aren't appearing in Telegram.
+
+  **Solutions:**
+
+  1. **Verify bot token and chat ID:**
+     ```bash
+     # Check credentials
+     echo $TELEGRAM_BOT_TOKEN
+     echo $TELEGRAM_CHAT_ID
+     ```
+
+  2. **Test bot API access:**
+     ```bash
+     curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getMe"
+     ```
+
+  3. **Get your correct chat ID:**
+     - Message your bot on Telegram
+     - Visit: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`
+     - Find `"chat":{"id":123456789}`
+
+  4. **Enable Telegram in config:**
+     ```yaml
+     telegram:
+       enabled: true
+       bot_token: ${TELEGRAM_BOT_TOKEN}
+       chat_id: ${TELEGRAM_CHAT_ID}
+     ```
+
+  5. **Check for message sending errors:**
+     ```bash
+     grep -i "telegram" /tmp/agenticai/agenticai-error.log
+     ```
+
+  <Tip>Send a test message: `agenticai test-connection` will verify Telegram connectivity</Tip>
+</Accordion>
+
+## Service Management Issues
+
+<Accordion title="Service won't start or keeps crashing">
+  **Symptoms:** Service fails to start or restarts repeatedly.
+
+  **Solutions:**
+
+  1. **Check service status:**
+     ```bash
+     agenticai service status
+     ```
+
+  2. **Review crash logs:**
+     ```bash
+     tail -n 50 /tmp/agenticai/agenticai-error.log
+     ```
+
+  3. **Verify all dependencies are installed:**
+     ```bash
+     pip install -e .
+     ```
+
+  4. **Check Python version:**
+     ```bash
+     python --version
+     # Requires Python 3.11+
+     ```
+
+  5. **Test server manually:**
+     ```bash
+     # Run in foreground to see errors
+     agenticai server
+     ```
+
+  6. **Reinstall the service:**
+     ```bash
+     agenticai service uninstall
+     agenticai service install --webhook-url https://your-url.ngrok.io
+     agenticai service start
+     ```
+
+  <Warning>The service requires a permanent webhook URL. Free ngrok URLs expire and require updating the service configuration</Warning>
+</Accordion>
+
+<Accordion title="Tunnel connection issues">
+  **Symptoms:** ngrok or Cloudflare tunnel fails to connect or URL changes.
+
+  **Solutions:**
+
+  1. **For ngrok:**
+     ```bash
+     # Check if ngrok is running
+     curl http://localhost:4040/api/tunnels
+     
+     # Restart ngrok
+     agenticai tunnel start
+     ```
+
+  2. **For Cloudflare tunnels:**
+     ```bash
+     # Start Cloudflare tunnel
+     agenticai tunnel start --provider cloudflare
+     ```
+
+  3. **Use a permanent tunnel URL:**
+     - ngrok: Upgrade to paid plan for fixed domains
+     - Cloudflare: Create named tunnel: `cloudflared tunnel create agenticai`
+
+  4. **Update service with new URL:**
+     ```bash
+     agenticai service uninstall
+     agenticai service install --webhook-url https://new-url.ngrok.io
+     ```
+
+  5. **Set environment variable:**
+     ```bash
+     export NGROK_URL=https://your-url.ngrok.io
+     ```
+
+  <Tip>For production deployments, use a permanent URL with a custom domain to avoid reconfiguration</Tip>
+</Accordion>
+
+## Getting Help
+
+If you're still experiencing issues:
+
+1. **Check service logs:** `agenticai service logs -f`
+2. **Run diagnostics:** `agenticai test-connection`
+3. **Review recent errors:** `tail -n 100 /tmp/agenticai/agenticai-error.log`
+4. **Report issues:** [GitHub Issues](https://github.com/IstiqlalBhat/aiagent/issues)
+
+<Note>Include relevant log excerpts and your configuration (with sensitive data removed) when reporting issues</Note>

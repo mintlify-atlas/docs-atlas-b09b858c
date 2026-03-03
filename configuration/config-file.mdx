@@ -1,0 +1,446 @@
+---
+title: Configuration File
+description: Complete reference for config.yaml structure and all available options
+icon: file-code
+---
+
+The `config.yaml` file is the main configuration file for Agentic AI. It defines all service connections, behavior settings, and integrations.
+
+## File Location
+
+By default, the config file is loaded from:
+- `./config.yaml` in your current directory
+- Or specify a custom path: `agenticai server --config /path/to/config.yaml`
+
+## Configuration Structure
+
+The config file is organized into logical sections for each service and feature.
+
+## Twilio Configuration
+
+Controls how Agentic AI connects to Twilio for phone calls.
+
+```yaml
+twilio:
+  account_sid: ${TWILIO_ACCOUNT_SID}
+  auth_token: ${TWILIO_AUTH_TOKEN}
+  from_number: ${TWILIO_PHONE_NUMBER:+1XXXXXXXXXX}
+```
+
+<ParamField path="twilio.account_sid" type="string" required>
+  Your Twilio Account SID from environment variable.
+  
+  References: `${TWILIO_ACCOUNT_SID}`
+</ParamField>
+
+<ParamField path="twilio.auth_token" type="string" required>
+  Your Twilio Auth Token from environment variable.
+  
+  References: `${TWILIO_AUTH_TOKEN}`
+</ParamField>
+
+<ParamField path="twilio.from_number" type="string" required>
+  The phone number to make calls from (E.164 format).
+  
+  References: `${TWILIO_PHONE_NUMBER:+1XXXXXXXXXX}`
+  
+  Example: `+15551234567`
+</ParamField>
+
+## Gemini Configuration
+
+Controls the Gemini AI model for intent analysis and system instructions.
+
+```yaml
+gemini:
+  api_key: ${GEMINI_API_KEY}
+  model: "models/gemini-2.5-flash-native-audio-latest"
+  voice: "Zephyr"
+  system_instruction: |
+    You are a helpful AI assistant making phone calls on behalf of the user.
+    Be concise, professional, and friendly. Listen carefully and respond appropriately.
+    When the conversation is complete, summarize any key information or action items.
+```
+
+<ParamField path="gemini.api_key" type="string" required>
+  Your Gemini API key from environment variable.
+  
+  References: `${GEMINI_API_KEY}`
+</ParamField>
+
+<ParamField path="gemini.model" type="string" default="models/gemini-2.5-flash-native-audio-latest">
+  The Gemini model to use for intent analysis.
+  
+  Available models:
+  - `models/gemini-2.5-flash-native-audio-latest` (recommended)
+  - `models/gemini-2.5-flash-preview-native-audio-dialog`
+</ParamField>
+
+<ParamField path="gemini.voice" type="string" default="Zephyr">
+  The voice for Gemini TTS (when not using OpenAI Realtime).
+  
+  Available voices: Zephyr, Coral, Breeze, Nova
+</ParamField>
+
+<ParamField path="gemini.system_instruction" type="string">
+  The system prompt that defines the AI's behavior and personality.
+  
+  This is used for intent analysis and determining what actions to take.
+  
+  Example:
+  ```yaml
+  system_instruction: |
+    You are a helpful AI assistant.
+    Analyze user requests and determine if they require ClawdBot execution.
+  ```
+</ParamField>
+
+## Telegram Configuration
+
+Controls real-time transcript delivery to Telegram.
+
+```yaml
+telegram:
+  enabled: true
+  bot_token: ${TELEGRAM_BOT_TOKEN}
+  chat_id: ${TELEGRAM_CHAT_ID}
+```
+
+<ParamField path="telegram.enabled" type="boolean" default={true}>
+  Enable or disable Telegram integration.
+  
+  Set to `false` to disable sending transcripts to Telegram.
+</ParamField>
+
+<ParamField path="telegram.bot_token" type="string" required>
+  Your Telegram bot token from environment variable.
+  
+  References: `${TELEGRAM_BOT_TOKEN}`
+</ParamField>
+
+<ParamField path="telegram.chat_id" type="string" required>
+  The Telegram chat ID where transcripts will be sent.
+  
+  References: `${TELEGRAM_CHAT_ID}`
+</ParamField>
+
+## Gateway Configuration
+
+Controls connection to the OpenClaw Gateway for ClawdBot integration.
+
+```yaml
+gateway:
+  url: "ws://127.0.0.1:18789"
+  reconnect_max_attempts: 10
+  reconnect_base_delay: 1.0
+  reconnect_max_delay: 60.0
+```
+
+<ParamField path="gateway.url" type="string" default="ws://127.0.0.1:18789">
+  The WebSocket URL of the OpenClaw Gateway.
+  
+  Default assumes ClawdBot Gateway is running locally on port 18789.
+  
+  For remote gateways: `ws://remote-host:18789`
+</ParamField>
+
+<ParamField path="gateway.reconnect_max_attempts" type="integer" default={10}>
+  Maximum number of reconnection attempts if the gateway disconnects.
+  
+  Set to `-1` for unlimited attempts.
+</ParamField>
+
+<ParamField path="gateway.reconnect_base_delay" type="float" default={1.0}>
+  Initial delay in seconds before first reconnection attempt.
+  
+  Uses exponential backoff: `base_delay * 2^attempt`
+</ParamField>
+
+<ParamField path="gateway.reconnect_max_delay" type="float" default={60.0}>
+  Maximum delay in seconds between reconnection attempts.
+  
+  Caps the exponential backoff to prevent extremely long waits.
+</ParamField>
+
+## Server Configuration
+
+Controls the FastAPI server that handles Twilio webhooks and WebSocket connections.
+
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 8080
+  webhook_path: "/twilio/voice"
+  websocket_path: "/twilio/media-stream"
+```
+
+<ParamField path="server.host" type="string" default="0.0.0.0">
+  The host to bind the server to.
+  
+  - `0.0.0.0` - Listen on all interfaces (default)
+  - `127.0.0.1` - Listen only on localhost
+</ParamField>
+
+<ParamField path="server.port" type="integer" default={8080}>
+  The port to run the server on.
+  
+  Must match the port in your tunnel configuration.
+</ParamField>
+
+<ParamField path="server.webhook_path" type="string" default="/twilio/voice">
+  The URL path for Twilio voice webhooks.
+  
+  Full webhook URL: `https://your-tunnel-url.com/twilio/voice`
+</ParamField>
+
+<ParamField path="server.websocket_path" type="string" default="/twilio/media-stream">
+  The URL path for Twilio Media Streams WebSocket.
+  
+  Full WebSocket URL: `wss://your-tunnel-url.com/twilio/media-stream`
+</ParamField>
+
+## Logging Configuration
+
+Controls logging output format and level.
+
+```yaml
+logging:
+  level: "INFO"
+  format: "json"
+```
+
+<ParamField path="logging.level" type="string" default="INFO">
+  The log level to use.
+  
+  Options:
+  - `DEBUG` - Very verbose, all details
+  - `INFO` - Standard operation logs (recommended)
+  - `WARNING` - Only warnings and errors
+  - `ERROR` - Only errors
+  - `CRITICAL` - Only critical errors
+</ParamField>
+
+<ParamField path="logging.format" type="string" default="json">
+  The format for log output.
+  
+  Options:
+  - `json` - Structured JSON logs (recommended for production)
+  - `console` - Human-readable console output (good for development)
+</ParamField>
+
+## Tunnel Configuration
+
+Controls automatic tunnel setup for public webhook URLs.
+
+```yaml
+tunnel:
+  enabled: false
+  provider: "ngrok"
+  url: ${NGROK_URL:}
+```
+
+<ParamField path="tunnel.enabled" type="boolean" default={false}>
+  Enable automatic tunnel startup.
+  
+  <Warning>Set to `true` only if you want Agentic AI to manage the tunnel process.</Warning>
+  
+  Most users should start tunnels manually and set `enabled: false`.
+</ParamField>
+
+<ParamField path="tunnel.provider" type="string" default="ngrok">
+  The tunnel provider to use.
+  
+  Options:
+  - `ngrok` - Use ngrok (most common)
+  - `cloudflare` - Use Cloudflare Tunnel
+  
+  See [Tunnel Setup](/configuration/tunnel-setup) for detailed instructions.
+</ParamField>
+
+<ParamField path="tunnel.url" type="string">
+  A fixed tunnel URL (if using paid plans with reserved domains).
+  
+  References: `${NGROK_URL:}` (empty default if not set)
+  
+  Example: `https://myapp.ngrok.io`
+  
+  If empty, tunnel will generate a random URL each time.
+</ParamField>
+
+## Whisper Configuration
+
+Controls OpenAI Whisper for speech-to-text transcription.
+
+```yaml
+whisper:
+  enabled: false
+  api_key: ${OPENAI_API_KEY:}
+  model: "whisper-1"
+```
+
+<Warning>
+  Whisper is automatically disabled when using OpenAI Realtime API, which has built-in Whisper transcription.
+</Warning>
+
+<ParamField path="whisper.enabled" type="boolean" default={false}>
+  Enable standalone Whisper for accurate STT.
+  
+  Only needed if NOT using OpenAI Realtime API.
+</ParamField>
+
+<ParamField path="whisper.api_key" type="string">
+  OpenAI API key for Whisper.
+  
+  References: `${OPENAI_API_KEY:}` (optional)
+</ParamField>
+
+<ParamField path="whisper.model" type="string" default="whisper-1">
+  The Whisper model to use.
+  
+  Currently only `whisper-1` is available.
+</ParamField>
+
+## OpenAI Realtime Configuration
+
+Controls the OpenAI Realtime API for natural voice conversations.
+
+```yaml
+openai_realtime:
+  enabled: true
+  api_key: ${OPENAI_API_KEY}
+  model: "gpt-4o-realtime-preview-2024-12-17"
+  voice: "alloy"
+```
+
+<ParamField path="openai_realtime.enabled" type="boolean" default={true}>
+  Enable OpenAI Realtime API as the primary voice engine.
+  
+  When enabled, this replaces Gemini Live for voice conversations.
+  
+  <Note>Requires access to OpenAI Realtime API (gpt-4o-realtime)</Note>
+</ParamField>
+
+<ParamField path="openai_realtime.api_key" type="string" required>
+  OpenAI API key for Realtime API.
+  
+  References: `${OPENAI_API_KEY}`
+</ParamField>
+
+<ParamField path="openai_realtime.model" type="string" default="gpt-4o-realtime-preview-2024-12-17">
+  The OpenAI Realtime model to use.
+  
+  Current available model:
+  - `gpt-4o-realtime-preview-2024-12-17`
+</ParamField>
+
+<ParamField path="openai_realtime.voice" type="string" default="alloy">
+  The voice to use for OpenAI TTS.
+  
+  See [Voice Options](/configuration/voice-options) for all available voices and their characteristics.
+</ParamField>
+
+## Complete Example
+
+Here's a complete `config.yaml` file with all sections:
+
+```yaml
+# Agentic AI Configuration
+# Environment variables can be referenced with ${VAR_NAME}
+
+twilio:
+  account_sid: ${TWILIO_ACCOUNT_SID}
+  auth_token: ${TWILIO_AUTH_TOKEN}
+  from_number: ${TWILIO_PHONE_NUMBER:+1XXXXXXXXXX}
+
+gemini:
+  api_key: ${GEMINI_API_KEY}
+  model: "models/gemini-2.5-flash-native-audio-latest"
+  voice: "Zephyr"
+  system_instruction: |
+    You are a helpful AI assistant making phone calls on behalf of the user.
+    Be concise, professional, and friendly. Listen carefully and respond appropriately.
+    When the conversation is complete, summarize any key information or action items.
+
+telegram:
+  enabled: true
+  bot_token: ${TELEGRAM_BOT_TOKEN}
+  chat_id: ${TELEGRAM_CHAT_ID}
+
+gateway:
+  url: "ws://127.0.0.1:18789"
+  reconnect_max_attempts: 10
+  reconnect_base_delay: 1.0
+  reconnect_max_delay: 60.0
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  webhook_path: "/twilio/voice"
+  websocket_path: "/twilio/media-stream"
+
+logging:
+  level: "INFO"
+  format: "json"
+
+tunnel:
+  enabled: false
+  provider: "ngrok"
+  url: ${NGROK_URL:}
+
+whisper:
+  enabled: false
+  api_key: ${OPENAI_API_KEY:}
+  model: "whisper-1"
+
+openai_realtime:
+  enabled: true
+  api_key: ${OPENAI_API_KEY}
+  model: "gpt-4o-realtime-preview-2024-12-17"
+  voice: "alloy"
+```
+
+## Loading Configuration
+
+Configuration is loaded automatically when you run:
+
+```bash
+agenticai server
+```
+
+Or specify a custom config file:
+
+```bash
+agenticai server --config /path/to/config.yaml
+```
+
+## Configuration Validation
+
+The configuration is validated using Pydantic models at startup. If any required fields are missing or invalid, you'll see a clear error message.
+
+See `config.py:18-111` for the validation schemas.
+
+## Troubleshooting
+
+### Config file not found
+
+```bash
+# Check if config.yaml exists
+ls -la config.yaml
+
+# Or specify explicit path
+agenticai server --config ./config.yaml
+```
+
+### Environment variables not expanding
+
+If you see `${VAR_NAME}` literally in error messages:
+- Check that variables are set in `.env`
+- Verify the `.env` file is in the correct location
+- Check for typos in variable names (case-sensitive)
+
+### Invalid configuration
+
+If you see Pydantic validation errors:
+- Check that all required fields are present
+- Verify data types (strings, numbers, booleans)
+- Check YAML syntax (indentation, colons, quotes)

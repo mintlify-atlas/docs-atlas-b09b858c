@@ -1,0 +1,681 @@
+---
+title: Scheduling Automated Calls
+description: Set up recurring phone calls with cron expressions using the Agentic AI scheduler
+---
+
+Automate phone calls on a schedule using cron expressions with the built-in APScheduler integration.
+
+## Overview
+
+The scheduler enables:
+
+- ✅ Recurring calls (daily, weekly, monthly)
+- ✅ Multiple calls per schedule
+- ✅ Cron-based timing (flexible scheduling)
+- ✅ Metadata for tracking and analytics
+- ✅ Enable/disable schedules without deleting
+- ✅ Manual execution for testing
+
+Reference: `src/agenticai/scheduler/scheduler.py`
+
+## Configuration File
+
+Schedules are defined in `schedules.yaml` at your project root.
+
+### Example Configuration
+
+```yaml schedules.yaml
+schedules:
+  - name: "morning_check"
+    cron: "0 9 * * 1-5"  # 9 AM, Monday-Friday
+    enabled: true
+    calls:
+      - to_number: "+15551234567"
+        prompt: "Good morning check-in call. Ask about any updates or concerns."
+        metadata:
+          purpose: "daily_checkin"
+          priority: "normal"
+
+  - name: "appointment_reminder"
+    cron: "0 8 * * *"  # 8 AM daily
+    enabled: true
+    calls:
+      - to_number: "+15559876543"
+        prompt: "Call to remind about the scheduled appointment today."
+        metadata:
+          purpose: "reminder"
+          priority: "high"
+
+  - name: "weekly_report"
+    cron: "0 17 * * 5"  # 5 PM on Fridays
+    enabled: false
+    calls:
+      - to_number: "+15551112222"
+        prompt: "Weekly status report call. Summarize this week's activities."
+        metadata:
+          purpose: "report"
+          priority: "normal"
+```
+
+Reference: `~/workspace/source/schedules.yaml`
+
+### Schedule Structure
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Unique identifier for the schedule |
+| `cron` | Yes | Cron expression for timing |
+| `enabled` | Yes | Whether the schedule is active |
+| `calls` | Yes | Array of calls to make |
+| `calls[].to_number` | Yes | Phone number in E.164 format |
+| `calls[].prompt` | Yes | AI instructions for the call |
+| `calls[].metadata` | No | Custom tracking data |
+
+## Cron Expression Format
+
+Schedules use standard cron syntax:
+
+```
+┌───────────── minute (0 - 59)
+│ ┌───────────── hour (0 - 23)
+│ │ ┌───────────── day of month (1 - 31)
+│ │ │ ┌───────────── month (1 - 12)
+│ │ │ │ ┌───────────── day of week (0 - 6) (Sunday to Saturday)
+│ │ │ │ │
+│ │ │ │ │
+* * * * *
+```
+
+### Common Patterns
+
+| Pattern | Description | Cron Expression |
+|---------|-------------|----------------|
+| Every day at 9 AM | Daily morning call | `0 9 * * *` |
+| Weekdays at 8:30 AM | Monday-Friday | `30 8 * * 1-5` |
+| Every Monday at 10 AM | Weekly | `0 10 * * 1` |
+| First day of month | Monthly | `0 9 1 * *` |
+| Every 2 hours | Recurring | `0 */2 * * *` |
+| Fridays at 5 PM | End of week | `0 17 * * 5` |
+| Specific date/time | Jan 1 at noon | `0 12 1 1 *` |
+
+### Interactive Cron Builder
+
+Use [crontab.guru](https://crontab.guru/) to build and validate expressions.
+
+## CLI Commands
+
+### List All Schedules
+
+View configured schedules:
+
+```bash
+agenticai schedule list
+```
+
+**Output:**
+
+```
+┌────────────────────────────────────────────────────────┐
+│                  Configured Schedules                  │
+├─────────────────┬────────────┬─────────┬───────────────┤
+│ Name            │ Cron       │ Enabled │ Calls         │
+├─────────────────┼────────────┼─────────┼───────────────┤
+│ morning_check   │ 0 9 * * 1-5│ Yes     │ 1             │
+│ appointment_... │ 0 8 * * *  │ Yes     │ 1             │
+│ weekly_report   │ 0 17 * * 5 │ No      │ 1             │
+└─────────────────┴────────────┴─────────┴───────────────┘
+```
+
+Reference: `src/agenticai/cli.py:109-131`
+
+### Run a Schedule Manually
+
+Test a schedule immediately without waiting:
+
+```bash
+agenticai schedule run morning_check --webhook-url https://your-url.ngrok.io
+```
+
+**Output:**
+
+```
+Running schedule: morning_check
+Initiated 1 call(s)
+  Call ID: CA1234567890abcdef
+Waiting for calls to complete... (Ctrl+C to exit)
+```
+
+Reference: `src/agenticai/cli.py:133-177`
+
+<Note>
+Manual runs ignore the `enabled` flag - they run even if disabled.
+</Note>
+
+## Running the Scheduler
+
+### Option 1: Daemon Mode
+
+Run server with scheduler in foreground:
+
+```bash
+agenticai daemon --webhook-url https://your-url.ngrok.io
+```
+
+**Output:**
+
+```
+Starting Agentic AI in daemon mode
+Scheduler started
+  morning_check: 2024-03-16 09:00:00
+  appointment_reminder: 2024-03-16 08:00:00
+INFO:     Uvicorn running on http://0.0.0.0:8080
+```
+
+Reference: `src/agenticai/cli.py:257-308`
+
+### Option 2: Background Service (Recommended)
+
+Install as a persistent service:
+
+<Steps>
+
+### Step 1: Install Service
+
+```bash
+agenticai service install --webhook-url https://your-permanent-url.com
+```
+
+### Step 2: Start Service
+
+```bash
+agenticai service start
+```
+
+### Step 3: Verify Scheduler
+
+Check status to see next run times:
+
+```bash
+agenticai service status
+```
+
+**Output includes:**
+
+```
+Recent logs:
+  [2024-03-15 14:32:02] INFO: Scheduler started
+  [2024-03-15 14:32:02] INFO: Next run: morning_check at 2024-03-16 09:00:00
+  [2024-03-15 14:32:02] INFO: Next run: appointment_reminder at 2024-03-16 08:00:00
+```
+
+</Steps>
+
+See the [Service Management](/guides/service-management) guide for details.
+
+## Scheduler Internals
+
+### Loading Schedules
+
+The scheduler loads `schedules.yaml` on startup:
+
+```python
+scheduler = CallScheduler(call_handler)
+scheduler.load_schedules()
+```
+
+Reference: `src/agenticai/scheduler/scheduler.py:45-49`
+
+### Starting the Scheduler
+
+```python
+scheduler.start()
+# Only enabled schedules are added as jobs
+```
+
+Reference: `src/agenticai/scheduler/scheduler.py:51-73`
+
+### Job Execution
+
+When a schedule triggers:
+
+1. **Job fires** at the cron time
+2. **Calls initiated** for each call in the schedule
+3. **Metadata passed** to each call session
+4. **Errors logged** if calls fail (doesn't stop other calls)
+
+Reference: `src/agenticai/scheduler/scheduler.py:129-163`
+
+## Multiple Calls Per Schedule
+
+A schedule can initiate multiple calls:
+
+```yaml schedules.yaml
+schedules:
+  - name: "team_standup"
+    cron: "0 10 * * 1-5"  # 10 AM weekdays
+    enabled: true
+    calls:
+      - to_number: "+15551111111"
+        prompt: "Ask Alice about her progress on the mobile app."
+        metadata:
+          team_member: "alice"
+          role: "developer"
+      
+      - to_number: "+15552222222"
+        prompt: "Ask Bob about the server deployment status."
+        metadata:
+          team_member: "bob"
+          role: "devops"
+      
+      - to_number: "+15553333333"
+        prompt: "Ask Carol about the design mockups."
+        metadata:
+          team_member: "carol"
+          role: "designer"
+```
+
+All three calls will be initiated simultaneously when the schedule triggers.
+
+## Metadata Usage
+
+Metadata helps track and analyze calls:
+
+```yaml
+metadata:
+  purpose: "appointment_reminder"
+  priority: "high"
+  customer_id: "CUST123"
+  campaign: "spring-2024"
+  follow_up_required: true
+```
+
+Access metadata in your application:
+
+```python
+# Metadata is available in the call session
+session = call_manager.active_sessions[call_id]
+metadata = session.metadata
+
+print(metadata["purpose"])  # "appointment_reminder"
+print(metadata["priority"])  # "high"
+```
+
+## Dynamic Schedules
+
+You can programmatically add schedules:
+
+```python
+from agenticai.scheduler.scheduler import CallScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+# Create scheduler
+scheduler = CallScheduler(call_handler)
+
+# Add a dynamic job
+scheduler._scheduler.add_job(
+    scheduler._execute_schedule,
+    trigger=CronTrigger(hour=14, minute=30),
+    id="dynamic_afternoon_call",
+    kwargs={
+        "schedule": {
+            "name": "afternoon_call",
+            "calls": [
+                {
+                    "to_number": "+15551234567",
+                    "prompt": "Afternoon check-in",
+                    "metadata": {"dynamic": True}
+                }
+            ]
+        }
+    }
+)
+```
+
+Reference: `src/agenticai/scheduler/scheduler.py:117-127`
+
+## Monitoring Schedules
+
+### View Next Run Times
+
+Programmatically check when schedules will next run:
+
+```python
+scheduler = CallScheduler(call_handler)
+scheduler.load_schedules()
+scheduler.start()
+
+next_runs = scheduler.get_next_run_times()
+for name, time in next_runs.items():
+    print(f"{name}: {time}")
+```
+
+**Output:**
+
+```
+morning_check: 2024-03-16 09:00:00
+appointment_reminder: 2024-03-16 08:00:00
+```
+
+Reference: `src/agenticai/scheduler/scheduler.py:217-227`
+
+### List Schedule Details
+
+```python
+schedules = scheduler.list_schedules()
+for s in schedules:
+    print(f"{s['name']}: {s['cron']} ({s['call_count']} calls)")
+```
+
+Reference: `src/agenticai/scheduler/scheduler.py:201-215`
+
+## Best Practices
+
+<Steps>
+
+### Step 1: Test Manually First
+
+Before enabling a schedule:
+
+```bash
+# Run it manually to verify
+agenticai schedule run morning_check --webhook-url https://your-url.ngrok.io
+```
+
+### Step 2: Start with `enabled: false`
+
+Create schedules disabled initially:
+
+```yaml
+schedules:
+  - name: "new_schedule"
+    cron: "0 9 * * *"
+    enabled: false  # Test first!
+    calls: [...]
+```
+
+### Step 3: Use Descriptive Names
+
+Names should explain the purpose:
+
+```yaml
+# Good
+- name: "daily_customer_satisfaction_survey"
+
+# Bad
+- name: "schedule1"
+```
+
+### Step 4: Add Comprehensive Metadata
+
+Track everything you might need:
+
+```yaml
+metadata:
+  purpose: "appointment_reminder"
+  campaign_id: "Q1-2024"
+  department: "sales"
+  customer_tier: "premium"
+  follow_up_required: true
+  created_by: "scheduler"
+  version: "1.0"
+```
+
+### Step 5: Monitor Logs
+
+Watch scheduler activity:
+
+```bash
+agenticai service logs -f | grep "schedule"
+```
+
+</Steps>
+
+## Advanced Examples
+
+### Business Hours Only
+
+```yaml
+schedules:
+  - name: "business_hours_reminder"
+    cron: "0 9-17 * * 1-5"  # Every hour, 9 AM - 5 PM, weekdays
+    enabled: true
+    calls:
+      - to_number: "+15551234567"
+        prompt: "Hourly reminder during business hours"
+```
+
+### Specific Days
+
+```yaml
+schedules:
+  - name: "monday_wednesday_friday"
+    cron: "0 14 * * 1,3,5"  # 2 PM on Mon, Wed, Fri
+    enabled: true
+    calls:
+      - to_number: "+15551234567"
+        prompt: "Alternate day check-in"
+```
+
+### Every 15 Minutes
+
+```yaml
+schedules:
+  - name: "frequent_updates"
+    cron: "*/15 * * * *"  # Every 15 minutes
+    enabled: true
+    calls:
+      - to_number: "+15551234567"
+        prompt: "Frequent status check"
+```
+
+### Quarterly Reports
+
+```yaml
+schedules:
+  - name: "quarterly_review"
+    cron: "0 9 1 1,4,7,10 *"  # 9 AM on Jan 1, Apr 1, Jul 1, Oct 1
+    enabled: true
+    calls:
+      - to_number: "+15551234567"
+        prompt: "Quarterly business review call"
+```
+
+### Time Zone Considerations
+
+<Warning>
+Scheduler uses the **server's local time zone**. To use a specific time zone:
+</Warning>
+
+```python
+from apscheduler.triggers.cron import CronTrigger
+from datetime import timezone, timedelta
+
+# Example: EST timezone
+est = timezone(timedelta(hours=-5))
+trigger = CronTrigger(
+    hour=9,
+    minute=0,
+    timezone=est
+)
+```
+
+Or set your server's timezone:
+
+```bash
+# macOS
+sudo systemsetup -settimezone America/New_York
+
+# Linux
+sudo timedatectl set-timezone America/New_York
+```
+
+## Troubleshooting
+
+<Accordion title="Schedule not running">
+
+**Symptoms:** Cron time passes but calls don't trigger
+
+**Solutions:**
+
+1. Verify schedule is enabled:
+   ```bash
+   agenticai schedule list
+   # Check "Enabled" column
+   ```
+
+2. Check scheduler is running:
+   ```bash
+   agenticai service status
+   # Should show "Scheduler started"
+   ```
+
+3. Verify cron syntax:
+   ```bash
+   # Test at https://crontab.guru/
+   ```
+
+4. Check logs for errors:
+   ```bash
+   agenticai service logs -f | grep -i schedule
+   ```
+
+5. Manually test the schedule:
+   ```bash
+   agenticai schedule run <name> --webhook-url https://your-url.ngrok.io
+   ```
+
+Reference: `src/agenticai/scheduler/scheduler.py:96-115`
+
+</Accordion>
+
+<Accordion title="Calls initiated but fail">
+
+**Symptoms:** Scheduler logs show "call initiated" but calls don't connect
+
+**Solutions:**
+
+1. Check webhook URL is valid:
+   ```bash
+   curl https://your-webhook-url.com/health
+   ```
+
+2. Verify Twilio credentials:
+   ```bash
+   agenticai test-connection
+   ```
+
+3. Check phone numbers are valid E.164 format:
+   ```yaml
+   # Good
+   to_number: "+15551234567"
+   
+   # Bad
+   to_number: "555-123-4567"
+   to_number: "15551234567"  # Missing +
+   ```
+
+4. Review error logs:
+   ```bash
+   tail -50 /tmp/agenticai/agenticai-error.log
+   ```
+
+Reference: `src/agenticai/scheduler/scheduler.py:149-163`
+
+</Accordion>
+
+<Accordion title="Invalid cron expression">
+
+**Symptoms:** Error loading schedules or job not added
+
+**Solutions:**
+
+1. Validate cron format:
+   ```
+   # Must be 5 parts: minute hour day month day_of_week
+   "0 9 * * *"  # ✓ Valid
+   "0 9 * *"    # ✗ Invalid (missing field)
+   ```
+
+2. Check for typos:
+   ```yaml
+   # Good
+   cron: "0 9 * * 1-5"
+   
+   # Bad
+   cron: "0 9 * * 1-5 "  # Trailing space
+   cron: "0  9 * * 1-5"  # Double space
+   ```
+
+3. Use integer ranges correctly:
+   ```yaml
+   # Good
+   cron: "0 9 * * 1-5"    # Monday to Friday
+   cron: "0 9-17 * * *"   # 9 AM to 5 PM
+   
+   # Bad
+   cron: "0 9 * * Mon-Fri"  # Use numbers, not names
+   ```
+
+Reference: `src/agenticai/scheduler/scheduler.py:99-115`
+
+</Accordion>
+
+<Accordion title="Schedules not loading">
+
+**Symptoms:** `schedule list` shows no schedules
+
+**Solutions:**
+
+1. Verify `schedules.yaml` exists:
+   ```bash
+   ls -la schedules.yaml
+   ```
+
+2. Check YAML syntax:
+   ```bash
+   # Use a YAML validator
+   python -c "import yaml; yaml.safe_load(open('schedules.yaml'))"
+   ```
+
+3. Common YAML errors:
+   ```yaml
+   # Good
+   schedules:
+     - name: "test"
+       cron: "0 9 * * *"
+   
+   # Bad (missing colon)
+   schedules
+     - name: "test"
+   
+   # Bad (wrong indentation)
+   schedules:
+   - name: "test"
+     cron: "0 9 * * *"
+   ```
+
+4. Check file permissions:
+   ```bash
+   chmod 644 schedules.yaml
+   ```
+
+Reference: `src/agenticai/core/config.py` (load_schedules)
+
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Service Management" icon="server" href="/guides/service-management">
+    Run scheduler as a daemon
+  </Card>
+  <Card title="Making Calls" icon="phone" href="/guides/making-calls">
+    Manual call triggering
+  </Card>
+  <Card title="Telegram Integration" icon="paper-plane" href="/guides/telegram-integration">
+    Monitor scheduled calls
+  </Card>
+  <Card title="Receiving Calls" icon="phone-incoming" href="/guides/receiving-calls">
+    Handle incoming calls
+  </Card>
+</CardGroup>

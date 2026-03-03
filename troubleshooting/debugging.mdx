@@ -1,0 +1,550 @@
+---
+title: Debugging Guide
+description: How to debug issues with logs, tools, and diagnostic commands
+---
+
+This guide covers debugging techniques, log analysis, and diagnostic tools for troubleshooting Agentic AI.
+
+## Log Files and Locations
+
+Agentic AI uses structured logging with different outputs depending on how you run it.
+
+### Service Logs (Background Daemon)
+
+When running as a background service, logs are written to:
+
+```bash
+# Standard output logs
+/tmp/agenticai/agenticai.log
+
+# Error logs
+/tmp/agenticai/agenticai-error.log
+```
+
+**View logs in real-time:**
+```bash
+# Follow standard logs
+agenticai service logs -f
+
+# Follow error logs only
+tail -f /tmp/agenticai/agenticai-error.log
+
+# View last 50 lines
+agenticai service logs -n 50
+```
+
+**Log location reference:** See cli.py:776-779 for launchd plist configuration.
+
+<Note>Log files are created when the service starts. If logs don't exist, the service hasn't been started yet.</Note>
+
+### Interactive Mode Logs
+
+When running `agenticai server` directly, logs output to your terminal.
+
+**Structured log format:**
+```
+2024-12-18T10:15:23.456789 [info     ] Starting call manager
+2024-12-18T10:15:24.123456 [info     ] Call initiated call_id=abc-123 to_number=+1234567890
+2024-12-18T10:15:25.789012 [error    ] WebSocket connection failed error=Connection refused
+```
+
+**Log configuration:** See cli.py:26-40 for structlog setup.
+
+<Tip>Use interactive mode for immediate debugging feedback: `agenticai server`</Tip>
+
+## Diagnostic Commands
+
+### System Status
+
+Check overall system health:
+
+```bash
+agenticai status
+```
+
+**Output includes:**
+- Configuration status
+- Gemini model configuration
+- Gateway connection details
+- Server readiness
+- Active schedules
+
+**Implementation:** See cli.py:181-231
+
+### Connection Testing
+
+Test all external service connections:
+
+```bash
+agenticai test-connection
+```
+
+**Tests:**
+- ✓ Twilio API authentication
+- ✓ Gateway WebSocket connectivity
+- ✓ Gemini API key validation
+
+**Example output:**
+```
+Testing Twilio...
+  ✓ Twilio OK
+Testing Gateway...
+  ✓ Gateway OK
+Checking Gemini config...
+  ✓ Gemini configured
+
+┏━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Service ┃ Status       ┃ Details              ┃
+┡━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━┩
+│ Twilio  │ ✓ Connected  │ Account: My Account  │
+│ Gateway │ ✓ Connected  │ URL: ws://127.0.0.1  │
+│ Gemini  │ ✓ Configured │ Model: gemini-2.5... │
+└─────────┴──────────────┴──────────────────────┘
+```
+
+**Implementation:** See cli.py:639-716
+
+### Service Management
+
+Debug background service issues:
+
+```bash
+# Check if service is installed
+agenticai service status
+
+# View service configuration
+cat ~/Library/LaunchAgents/com.agenticai.server.plist
+
+# Check if process is running
+ps aux | grep agenticai
+
+# View service PID
+launchctl list | grep agenticai
+```
+
+**Service status output:**
+```
+╭─ Agentic AI Service Status ─╮
+│ ✓ Service installed          │
+│   Plist: ~/Library/...       │
+│ ✓ Service running (PID: 1234)│
+│                              │
+│ Recent logs:                 │
+│   Starting call manager      │
+│   Call manager started       │
+│   Server listening on 8080   │
+╰──────────────────────────────╯
+```
+
+**Implementation:** See cli.py:993-1034
+
+### Health Check Endpoint
+
+Test if the server is responding:
+
+```bash
+# Check server health
+curl http://localhost:8080/health
+
+# Expected response
+{"status":"healthy","active_calls":0}
+```
+
+**Implementation:** See app.py:76-83
+
+## Analyzing Common Log Patterns
+
+### Call Connection Issues
+
+**Look for these patterns:**
+
+```bash
+# Search for connection errors
+grep -i "connection\|failed\|error" /tmp/agenticai/agenticai.log
+
+# Common error patterns:
+[error    ] Failed to connect to OpenAI Realtime
+[error    ] WebSocket connection failed error=Connection refused
+[error    ] Invalid webhook URL
+```
+
+**Related code:** app.py:266-286 handles WebSocket connections.
+
+### Audio Bridge Problems
+
+**Debug audio processing:**
+
+```bash
+# Filter audio-related logs
+grep -i "audio\|bridge\|twilio\|openai" /tmp/agenticai/agenticai.log
+
+# Key indicators:
+=== AUDIO BRIDGE STARTED ===
+=== TWILIO WEBSOCKET CONNECTED ===
+=== OPENAI REALTIME CONNECTED ===
+```
+
+**Key checkpoints:**
+- `MEDIA STREAM HANDLER STARTED` - WebSocket accepted
+- `TWILIO WEBSOCKET CONNECTED` - Twilio connection established  
+- `OPENAI REALTIME CONNECTED` - AI connection ready
+- `AUDIO BRIDGE STARTED` - Bridge is active
+
+**Implementation:** See call_manager.py:284-431 for media stream handling.
+
+### API Authentication Errors
+
+**Identify authentication failures:**
+
+```bash
+# Search for auth errors
+grep -i "auth\|unauthorized\|invalid.*key\|403\|401" /tmp/agenticai/agenticai-error.log
+
+# Examples:
+[error    ] Twilio authentication failed
+[error    ] OpenAI API key invalid
+[error    ] Unauthorized: Invalid API key
+```
+
+### Call Status Tracking
+
+**Follow call lifecycle:**
+
+```bash
+# Track a specific call
+grep "call_id=abc-123" /tmp/agenticai/agenticai.log
+
+# Expected flow:
+[info] Initiating call call_id=abc-123
+[info] Call status changed call_id=abc-123 new_status=ringing
+[info] Voice webhook called call_sid=CA123
+[info] Media stream handler started
+[info] Session ended call_id=abc-123 duration=45.2
+```
+
+**Implementation:** See call_manager.py:257-283 for status handling.
+
+## Debugging Specific Components
+
+### Twilio WebSocket Issues
+
+**Enable detailed WebSocket logging:**
+
+```python
+# Add debug prints in your code
+print(f"=== WebSocket message: {data} ===", flush=True)
+```
+
+**Check WebSocket events:**
+
+```bash
+grep "websocket\|media-stream" /tmp/agenticai/agenticai.log
+
+# Key events:
+event=connected    # WebSocket established
+event=start        # Stream started
+event=media        # Audio data flowing
+event=stop         # Stream ended
+```
+
+**WebSocket handler:** See app.py:266-286 and the TwilioMediaStreamHandler class.
+
+### OpenAI Realtime API Debugging
+
+**Test OpenAI connection independently:**
+
+```bash
+# Test API key
+curl https://api.openai.com/v1/models \
+  -H "Authorization: Bearer $OPENAI_API_KEY" | jq '.'
+
+# Check for Realtime API access
+curl https://api.openai.com/v1/models/gpt-4o-realtime-preview-2024-12-17 \
+  -H "Authorization: Bearer $OPENAI_API_KEY"
+```
+
+**Log search:**
+```bash
+grep -i "openai\|realtime" /tmp/agenticai/agenticai.log
+```
+
+**Configuration:** See call_manager.py:368-382 for OpenAI handler setup.
+
+### Gateway Integration Debugging
+
+**Test gateway connectivity:**
+
+```bash
+# Interactive gateway terminal
+agenticai bot
+
+# Commands to test:
+openclaw> status
+openclaw> ping
+openclaw> config
+```
+
+**Check gateway logs:**
+
+```bash
+grep -i "gateway\|clawdbot" /tmp/agenticai/agenticai.log
+
+# Expected patterns:
+[info] Connecting to OpenClaw Gateway url=ws://127.0.0.1:18789
+[info] Gateway connected
+[info] Sending message to gateway type=call_started
+```
+
+**Bot command implementation:** See cli.py:311-453
+
+### Telegram Integration Debugging
+
+**Test bot manually:**
+
+```bash
+# Test bot API
+curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getMe"
+
+# Send test message
+curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+  -d "chat_id=$TELEGRAM_CHAT_ID" \
+  -d "text=Test message from Agentic AI"
+```
+
+**Check Telegram logs:**
+
+```bash
+grep -i "telegram" /tmp/agenticai/agenticai.log
+```
+
+## Advanced Debugging Techniques
+
+### Enable Python Debug Mode
+
+Run with debug logging:
+
+```bash
+# Set debug environment variable
+export PYTHONVERBOSE=1
+export PYTHONDEBUG=1
+
+# Run server with verbose output
+agenticai server
+```
+
+### Capture Network Traffic
+
+Debug WebSocket and HTTP traffic:
+
+```bash
+# Install tcpdump or use Wireshark
+sudo tcpdump -i any -n port 8080 -w agenticai-traffic.pcap
+
+# Monitor specific connections
+sudo tcpdump -i any -n host api.openai.com
+```
+
+### Python Stack Traces
+
+When errors occur, full stack traces are logged:
+
+```bash
+# Find stack traces in error log
+grep -A 20 "Traceback" /tmp/agenticai/agenticai-error.log
+```
+
+**Example:**
+```
+[error] Error in media stream error=Connection reset exc_info=True
+Traceback (most recent call last):
+  File "agenticai/core/call_manager.py", line 280
+  File "agenticai/twilio/websocket.py", line 45
+ConnectionResetError: [Errno 54] Connection reset by peer
+```
+
+### Interactive Python Debugging
+
+Add breakpoints for live debugging:
+
+```python
+# Add to any file
+import pdb; pdb.set_trace()
+
+# Or use ipdb for better experience
+import ipdb; ipdb.set_trace()
+```
+
+**Run in foreground to use debugger:**
+```bash
+agenticai server  # Breakpoint will pause execution
+```
+
+## Log Filtering and Analysis
+
+### Useful grep patterns
+
+```bash
+# Show only errors
+grep "\[error" /tmp/agenticai/agenticai.log
+
+# Show warnings and errors
+grep -E "\[(error|warn)" /tmp/agenticai/agenticai.log
+
+# Filter by call ID
+grep "call_id=abc-123" /tmp/agenticai/agenticai.log
+
+# Show last hour of logs
+find /tmp/agenticai -name "*.log" -mmin -60 -exec tail -f {} \;
+
+# Count error types
+grep "\[error" /tmp/agenticai/agenticai.log | cut -d']' -f2 | sort | uniq -c
+```
+
+### Log rotation
+
+Manage log file sizes:
+
+```bash
+# Check log sizes
+du -sh /tmp/agenticai/*.log
+
+# Truncate logs
+> /tmp/agenticai/agenticai.log
+
+# Archive old logs
+mv /tmp/agenticai/agenticai.log /tmp/agenticai/agenticai.log.$(date +%Y%m%d)
+```
+
+## Performance Debugging
+
+### Monitor Resource Usage
+
+```bash
+# Check CPU and memory usage
+top -pid $(pgrep -f agenticai)
+
+# Or use htop
+htop -p $(pgrep -f agenticai)
+
+# Monitor network connections
+lsof -i -P | grep agenticai
+```
+
+### Profile Slow Operations
+
+Identify performance bottlenecks:
+
+```bash
+# Look for slow operations in logs
+grep -i "slow\|timeout\|took.*ms" /tmp/agenticai/agenticai.log
+
+# Time specific operations
+time agenticai trigger --to +1234567890
+```
+
+## Reporting Issues
+
+When reporting bugs, include:
+
+### 1. System Information
+
+```bash
+# Gather system info
+echo "Python: $(python --version)"
+echo "OS: $(uname -a)"
+echo "Agentic AI: $(agenticai --version 2>/dev/null || echo 'unknown')"
+pip list | grep -E "fastapi|twilio|openai"
+```
+
+### 2. Configuration (sanitized)
+
+```bash
+# Show config without secrets
+cat config.yaml | sed 's/api_key:.*/api_key: [REDACTED]/' \
+                | sed 's/auth_token:.*/auth_token: [REDACTED]/'
+```
+
+### 3. Relevant Logs
+
+```bash
+# Extract last 100 lines with context
+tail -n 100 /tmp/agenticai/agenticai-error.log > error-report.log
+```
+
+### 4. Steps to Reproduce
+
+Document exact commands and sequence:
+
+```bash
+agenticai service start
+agenticai trigger --to +1234567890 --webhook-url https://example.ngrok.io
+# Error occurs here
+```
+
+<Warning>Always redact sensitive information (API keys, phone numbers, personal data) before sharing logs</Warning>
+
+## Common Debug Scenarios
+
+### Scenario: "Server starts but calls fail"
+
+```bash
+# 1. Verify server is listening
+curl http://localhost:8080/health
+
+# 2. Check webhook accessibility
+curl https://your-url.ngrok.io/health
+
+# 3. Test Twilio credentials
+agenticai test-connection
+
+# 4. Monitor logs during call
+agenticai service logs -f &
+agenticai trigger --to +1234567890
+```
+
+### Scenario: "No audio during call"
+
+```bash
+# 1. Check OpenAI configuration
+grep "openai_realtime" config.yaml
+
+# 2. Verify API key
+echo $OPENAI_API_KEY | cut -c1-10
+
+# 3. Look for audio errors
+grep -i "audio\|openai\|realtime" /tmp/agenticai/agenticai-error.log
+
+# 4. Check WebSocket connection
+grep "WEBSOCKET CONNECTED" /tmp/agenticai/agenticai.log
+```
+
+### Scenario: "Service won't stay running"
+
+```bash
+# 1. Check crash logs
+tail -n 50 /tmp/agenticai/agenticai-error.log
+
+# 2. Test manual start
+agenticai server  # Watch for immediate errors
+
+# 3. Check service configuration
+cat ~/Library/LaunchAgents/com.agenticai.server.plist
+
+# 4. Verify dependencies
+pip check
+```
+
+## Additional Resources
+
+- **Source Code References:**
+  - CLI commands: `src/agenticai/cli.py`
+  - Server implementation: `src/agenticai/server/app.py`
+  - Call management: `src/agenticai/core/call_manager.py`
+  - Log configuration: `cli.py:26-40`
+
+- **External Documentation:**
+  - [Twilio Media Streams](https://www.twilio.com/docs/voice/media-streams)
+  - [OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime)
+  - [FastAPI WebSockets](https://fastapi.tiangolo.com/advanced/websockets/)
+
+<Tip>Enable debug mode during development: Set `logging.level: DEBUG` in config.yaml</Tip>

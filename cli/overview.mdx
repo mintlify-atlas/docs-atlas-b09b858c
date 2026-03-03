@@ -1,0 +1,209 @@
+---
+title: CLI Overview
+description: Introduction to the Agentic AI command-line interface and common usage patterns
+---
+
+The Agentic AI CLI provides a comprehensive set of commands for managing AI-powered phone call agents, webhook servers, scheduling, and OpenClaw Gateway integration.
+
+## Installation
+
+The CLI is automatically available after installing Agentic AI:
+
+```bash
+pip install -e .
+```
+
+Verify the installation:
+
+```bash
+agenticai --help
+```
+
+## Command Structure
+
+The CLI follows a grouped command structure:
+
+```bash
+agenticai [GLOBAL_OPTIONS] COMMAND [COMMAND_OPTIONS]
+```
+
+### Global Options
+
+<ParamField path="--config" type="string" default="config.yaml">
+  Path to the configuration file
+  
+  **Short form:** `-c`
+  
+  **Example:**
+  ```bash
+  agenticai --config /path/to/config.yaml status
+  ```
+</ParamField>
+
+## Command Categories
+
+### Server Management
+- `server` - Start the webhook server
+- `daemon` - Run server with scheduler (daemon mode)
+
+### Phone Calls
+- `trigger` - Quick trigger a phone call
+- `call` - Initiate an outbound phone call (direct)
+
+### Scheduling
+- `schedule list` - List all configured schedules
+- `schedule run` - Run a schedule immediately
+
+### Service Management
+- `service install` - Install as background service
+- `service start` - Start the service
+- `service stop` - Stop the service
+- `service restart` - Restart the service
+- `service status` - Check service status
+- `service logs` - View service logs
+- `service uninstall` - Uninstall the service
+
+### Tunnel Management
+- `tunnel start` - Start a tunnel (ngrok/cloudflare)
+- `tunnel info` - Show tunnel setup information
+
+### System
+- `status` - Show system status
+- `test-connection` - Test connections to Twilio, Gemini, and Gateway
+- `bot` - Connect to OpenClaw Gateway (interactive terminal)
+- `setup` - Interactive setup wizard
+
+## Common Workflows
+
+### First-Time Setup
+
+```bash
+# 1. Run the setup wizard
+agenticai setup
+
+# 2. Start a tunnel
+agenticai tunnel start
+
+# 3. Install as a service
+agenticai service install --webhook-url https://your-url.ngrok.io
+
+# 4. Start the service
+agenticai service start
+
+# 5. Test the connection
+agenticai test-connection
+```
+
+### Making Calls
+
+```bash
+# Quick call using running server
+agenticai trigger --to +15551234567
+
+# Call with custom prompt
+agenticai trigger -t +15551234567 -p "Ask about their appointment"
+
+# Direct call (starts temporary server)
+agenticai call --to +15551234567 \
+  --prompt "You are a helpful assistant" \
+  --webhook-url https://your-url.ngrok.io
+```
+
+### Development Mode
+
+```bash
+# Terminal 1: Start the server
+agenticai server
+
+# Terminal 2: Start ngrok
+agenticai tunnel start
+
+# Terminal 3: Trigger calls
+export NGROK_URL=https://your-url.ngrok.io
+agenticai trigger --to +15551234567
+```
+
+### Production Mode
+
+```bash
+# Install service with permanent tunnel URL
+agenticai service install --webhook-url https://permanent-tunnel.com
+
+# Service auto-starts on boot, no manual intervention needed
+agenticai service status
+
+# View live logs
+agenticai service logs -f
+```
+
+### Using Schedules
+
+```bash
+# List configured schedules
+agenticai schedule list
+
+# Run a schedule immediately (for testing)
+agenticai schedule run "morning-reminders" --webhook-url https://your-url.ngrok.io
+
+# Schedules run automatically in daemon mode
+agenticai daemon --webhook-url https://your-url.ngrok.io
+```
+
+### OpenClaw Integration
+
+```bash
+# Connect to OpenClaw Gateway (interactive terminal)
+agenticai bot
+
+# Connect to custom gateway
+agenticai bot --gateway-url ws://localhost:18789
+```
+
+## Configuration File
+
+Most commands load configuration from `config.yaml` (or the path specified via `--config`):
+
+```yaml
+twilio:
+  account_sid: ${TWILIO_ACCOUNT_SID}
+  auth_token: ${TWILIO_AUTH_TOKEN}
+  from_number: ${TWILIO_PHONE_NUMBER}
+
+gemini:
+  api_key: ${GEMINI_API_KEY}
+  model: "models/gemini-2.5-flash-native-audio-latest"
+
+gateway:
+  url: "ws://127.0.0.1:18789"
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+```
+
+Environment variables are loaded from `.env` file.
+
+## Exit Codes
+
+- `0` - Success
+- `1` - Configuration error or operation failed
+
+Interactive commands (like `bot` or `tunnel start`) exit with `0` on normal termination (Ctrl+C).
+
+## Getting Help
+
+View help for any command:
+
+```bash
+agenticai --help
+agenticai server --help
+agenticai service --help
+agenticai schedule --help
+```
+
+## Next Steps
+
+- [Server Command](/cli/server) - Start the webhook server
+- [Trigger Command](/cli/trigger) - Quick call triggering
+- [Service Commands](/cli/service) - Background service management
+- [Status Commands](/cli/status) - System status and testing

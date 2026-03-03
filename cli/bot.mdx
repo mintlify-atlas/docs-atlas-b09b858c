@@ -1,0 +1,367 @@
+---
+title: agenticai bot
+description: Connect to OpenClaw Gateway in interactive terminal mode
+---
+
+Connects your AI phone agent to the [OpenClaw Gateway](https://github.com/openclaw/openclaw) for real-time communication. Provides an interactive terminal interface for monitoring and controlling the gateway connection.
+
+## Usage
+
+```bash
+agenticai bot [OPTIONS]
+```
+
+## Options
+
+<ParamField path="--gateway-url" type="string" default="ws://127.0.0.1:18789">
+  OpenClaw Gateway WebSocket URL
+  
+  **Short form:** `-g`
+  
+  **Default:** Loaded from `config.gateway.url` (typically `ws://127.0.0.1:18789`), or `GATEWAY_URL` environment variable
+  
+  **Example:**
+  ```bash
+  agenticai bot --gateway-url ws://localhost:18789
+  ```
+</ParamField>
+
+## What It Does
+
+The bot command:
+
+1. Connects to the OpenClaw Gateway WebSocket
+2. Provides an interactive terminal for:
+   - Checking connection status
+   - Sending heartbeat pings
+   - Viewing configuration
+   - Monitoring gateway events
+3. Handles automatic reconnection on disconnect
+4. Displays real-time connection status
+
+## Examples
+
+### Basic Usage
+
+Connect to the default gateway:
+
+```bash
+agenticai bot
+```
+
+**Output:**
+```
+┌──────────────────────────────────────────┐
+│ 🦞 OpenClaw Gateway Terminal             │
+│ Connecting to: ws://127.0.0.1:18789      │
+│                                          │
+│ Type 'help' for commands, 'quit' to exit │
+└──────────────────────────────────────────┘
+
+✓ Connected to OpenClaw Gateway
+
+openclaw> 
+```
+
+### Custom Gateway URL
+
+Connect to a remote gateway:
+
+```bash
+agenticai bot --gateway-url ws://192.168.1.100:18789
+```
+
+### Using Environment Variable
+
+```bash
+export GATEWAY_URL=ws://localhost:18789
+agenticai bot
+```
+
+## Interactive Commands
+
+Once connected, you can use these commands:
+
+### help
+
+Display available commands:
+
+```
+openclaw> help
+```
+
+**Output:**
+```
+┌────────────────────────────────────────────────┐
+│ 🦞 OpenClaw Commands                           │
+├────────────────────────────────────────────────┤
+│ Available Commands:                            │
+│                                                │
+│   status     - Check OpenClaw Gateway status   │
+│   call       - Initiate a phone call           │
+│   active     - List active calls               │
+│   ping       - Send heartbeat to gateway       │
+│   config     - Show current configuration      │
+│   clear      - Clear screen                    │
+│   quit       - Exit terminal                   │
+│                                                │
+│ OpenClaw Gateway: github.com/openclaw/openclaw │
+└────────────────────────────────────────────────┘
+```
+
+### status
+
+Check gateway connection status:
+
+```
+openclaw> status
+```
+
+**Output:**
+```
+OpenClaw Gateway: 🟢 Connected
+URL: ws://127.0.0.1:18789
+```
+
+### ping
+
+Send a heartbeat to the gateway:
+
+```
+openclaw> ping
+```
+
+**Output:**
+```
+Ping sent!
+```
+
+### config
+
+Show current configuration:
+
+```
+openclaw> config
+```
+
+**Output:**
+```
+┌──────────────────────────────────────────┐
+│ Current Configuration                    │
+├──────────────────────────────────────────┤
+│ Twilio: +18001234567                     │
+│ Gemini Model: gemini-2.5-flash...        │
+│ Gateway: ws://127.0.0.1:18789            │
+│ Server: 0.0.0.0:8080                     │
+└──────────────────────────────────────────┘
+```
+
+### call
+
+Info about making calls:
+
+```
+openclaw> call
+```
+
+**Output:**
+```
+Use 'agenticai trigger' for quick calls
+Example: agenticai trigger --to +15551234567
+```
+
+### active
+
+Info about viewing active calls:
+
+```
+openclaw> active
+```
+
+**Output:**
+```
+Active calls shown via 'agenticai status'
+```
+
+### clear
+
+Clear the terminal screen:
+
+```
+openclaw> clear
+```
+
+### quit
+
+Exit the bot terminal:
+
+```
+openclaw> quit
+```
+
+**Output:**
+```
+Goodbye! 🦞
+```
+
+Alternatively, press `Ctrl+C` or type `exit` or `q`.
+
+## Connection Status
+
+### Successful Connection
+
+```
+✓ Connected to OpenClaw Gateway
+
+openclaw> 
+```
+
+### Connecting in Background
+
+```
+⚠ Connecting to OpenClaw in background...
+
+openclaw> 
+```
+
+The terminal remains usable while connection is established.
+
+### Connection Failed
+
+```
+Connection failed: Cannot connect to host 127.0.0.1:18789
+
+openclaw> 
+```
+
+You can still use commands; the client will attempt to reconnect.
+
+## Reconnection Behavior
+
+The bot automatically reconnects if the connection is lost:
+
+- **Max attempts:** Configured in `config.gateway.reconnect_max_attempts` (default: 5)
+- **Base delay:** `config.gateway.reconnect_base_delay` (default: 1s)
+- **Max delay:** `config.gateway.reconnect_max_delay` (default: 60s)
+- **Backoff:** Exponential with jitter
+
+## Integration with OpenClaw
+
+The bot connects to the OpenClaw Gateway to:
+
+1. **Send call events:** Transcripts, outcomes, metadata
+2. **Receive commands:** Execute ClawdBot skills
+3. **Monitor state:** Track active calls and agent status
+
+See the [OpenClaw documentation](https://github.com/openclaw/openclaw) for more details.
+
+## Use Cases
+
+### Development
+
+Monitor gateway connection during development:
+
+```bash
+# Terminal 1: Start OpenClaw Gateway
+clawdbot gateway
+
+# Terminal 2: Start Agentic AI server
+agenticai server
+
+# Terminal 3: Connect to gateway
+agenticai bot
+
+# Test connection
+openclaw> ping
+openclaw> status
+```
+
+### Debugging
+
+Check if gateway is reachable:
+
+```bash
+agenticai bot --gateway-url ws://localhost:18789
+
+# If connection fails, verify:
+# 1. OpenClaw Gateway is running
+# 2. Port 18789 is open
+# 3. URL is correct
+```
+
+### Production Monitoring
+
+Verify gateway connection in production:
+
+```bash
+agenticai bot --gateway-url ws://production-gateway.example.com:18789
+```
+
+## Configuration
+
+The bot uses these config values:
+
+```yaml
+gateway:
+  url: "ws://127.0.0.1:18789"
+  reconnect_max_attempts: 5
+  reconnect_base_delay: 1.0
+  reconnect_max_delay: 60.0
+```
+
+Override with command-line option:
+
+```bash
+agenticai bot --gateway-url ws://custom-url:18789
+```
+
+Or environment variable:
+
+```bash
+export GATEWAY_URL=ws://custom-url:18789
+agenticai bot
+```
+
+## Troubleshooting
+
+### Gateway Not Running
+
+**Error:** `Connection failed: Cannot connect to host 127.0.0.1:18789`
+
+**Solution:** Start the OpenClaw Gateway:
+```bash
+clawdbot gateway
+```
+
+### Wrong Port
+
+**Error:** Connection timeout or refused
+
+**Solution:** Verify the gateway port:
+```bash
+# Check if gateway is listening
+lsof -i :18789
+
+# Use correct port
+agenticai bot --gateway-url ws://localhost:PORT
+```
+
+### Firewall Issues
+
+**Error:** Connection timeout
+
+**Solution:** Ensure port 18789 is open:
+```bash
+# macOS
+sudo pfctl -d  # Disable firewall temporarily
+
+# Linux
+sudo ufw allow 18789
+```
+
+## See Also
+
+- [Trigger Command](/cli/trigger) - Quick call triggering
+- [Status Command](/cli/status) - System status
+- [Server Command](/cli/server) - Start webhook server
+- [OpenClaw Gateway](https://github.com/openclaw/openclaw) - Official OpenClaw documentation

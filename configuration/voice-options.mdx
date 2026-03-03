@@ -1,0 +1,312 @@
+---
+title: Voice Options
+description: Configure OpenAI voice options for natural-sounding phone conversations
+icon: microphone
+---
+
+Agentic AI uses OpenAI's Realtime API for natural voice conversations. The `voice` parameter controls which voice the AI uses when speaking to callers.
+
+## Configuring Voice
+
+Set the voice in your `config.yaml` file:
+
+```yaml
+openai_realtime:
+  enabled: true
+  api_key: ${OPENAI_API_KEY}
+  model: "gpt-4o-realtime-preview-2024-12-17"
+  voice: "alloy"  # Change this to your preferred voice
+```
+
+## Available Voices
+
+OpenAI Realtime API provides six distinct voices, each with unique characteristics:
+
+### alloy
+
+<ParamField path="alloy" type="string">
+  **Neutral, balanced voice**
+  
+  Best for:
+  - General-purpose applications
+  - Professional business calls
+  - When you want a neutral, non-gendered sound
+  
+  Characteristics: Clear, balanced tone with good enunciation
+</ParamField>
+
+```yaml
+openai_realtime:
+  voice: "alloy"
+```
+
+### echo
+
+<ParamField path="echo" type="string">
+  **Warm, conversational voice**
+  
+  Best for:
+  - Friendly customer service
+  - Casual conversations
+  - Building rapport with callers
+  
+  Characteristics: Approachable, warm, and engaging
+</ParamField>
+
+```yaml
+openai_realtime:
+  voice: "echo"
+```
+
+### fable
+
+<ParamField path="fable" type="string">
+  **Expressive, storytelling voice**
+  
+  Best for:
+  - Entertainment applications
+  - Narrative-driven interactions
+  - Creative or playful scenarios
+  
+  Characteristics: Dynamic with varied intonation
+</ParamField>
+
+```yaml
+openai_realtime:
+  voice: "fable"
+```
+
+### onyx
+
+<ParamField path="onyx" type="string">
+  **Deep, authoritative voice**
+  
+  Best for:
+  - Professional announcements
+  - Serious or formal contexts
+  - When authority is important
+  
+  Characteristics: Lower pitch, confident tone
+</ParamField>
+
+```yaml
+openai_realtime:
+  voice: "onyx"
+```
+
+### nova
+
+<ParamField path="nova" type="string">
+  **Friendly, upbeat voice**
+  
+  Best for:
+  - Customer support
+  - Positive, encouraging interactions
+  - Energetic applications
+  
+  Characteristics: Bright, cheerful, and optimistic
+</ParamField>
+
+```yaml
+openai_realtime:
+  voice: "nova"
+```
+
+### shimmer
+
+<ParamField path="shimmer" type="string">
+  **Soft, gentle voice**
+  
+  Best for:
+  - Calming applications
+  - Healthcare or wellness scenarios
+  - When a soothing tone is desired
+  
+  Characteristics: Smooth, calm, and reassuring
+</ParamField>
+
+```yaml
+openai_realtime:
+  voice: "shimmer"
+```
+
+## Voice Comparison
+
+Here's a quick reference table to help you choose:
+
+| Voice | Tone | Best For | Gender Perception |
+|-------|------|----------|-------------------|
+| **alloy** | Neutral, balanced | General purpose, professional | Neutral |
+| **echo** | Warm, conversational | Customer service, friendly | Masculine |
+| **fable** | Expressive, dynamic | Storytelling, creative | Neutral |
+| **onyx** | Deep, authoritative | Formal, professional | Masculine |
+| **nova** | Friendly, upbeat | Positive interactions | Feminine |
+| **shimmer** | Soft, gentle | Calming, wellness | Feminine |
+
+## Testing Voices
+
+To test different voices without editing your config file:
+
+1. Make a test call:
+```bash
+agenticai trigger --to +1234567890 --webhook-url https://your-tunnel.ngrok.io
+```
+
+2. Edit `config.yaml` to try a different voice:
+```yaml
+openai_realtime:
+  voice: "nova"  # Try different voices
+```
+
+3. Restart the server:
+```bash
+agenticai service restart
+```
+
+4. Make another call to hear the difference
+
+<Note>
+  Voice changes require a server restart to take effect.
+</Note>
+
+## Dynamic Voice Selection
+
+While the default voice is set in `config.yaml`, you can modify the voice programmatically if needed.
+
+### Example: Per-Call Voice Selection
+
+If you want different voices for different types of calls, you can modify the voice in your code:
+
+```python
+from agenticai.core.config import load_config
+
+config = load_config()
+
+# Override voice for specific call
+if call_type == "customer_service":
+    config.openai_realtime.voice = "nova"
+elif call_type == "professional":
+    config.openai_realtime.voice = "alloy"
+```
+
+See `config.py:90-97` for the `OpenAIRealtimeConfig` structure.
+
+## Voice and Language
+
+All OpenAI Realtime voices support multiple languages with natural accents:
+
+- English (US, UK, Australian, etc.)
+- Spanish
+- French
+- German
+- Italian
+- Portuguese
+- And many more
+
+The AI will automatically match the caller's language while maintaining the selected voice's characteristics.
+
+<Note>
+  Language detection and switching happen automatically based on the conversation context.
+</Note>
+
+## Configuration Best Practices
+
+<Warning>
+  Choose your voice based on your use case and audience expectations.
+</Warning>
+
+### For Customer Service
+- **Recommended**: `nova` or `echo`
+- Friendly, approachable tone puts callers at ease
+- Clear pronunciation ensures understanding
+
+### For Professional Business
+- **Recommended**: `alloy` or `onyx`
+- Neutral, authoritative tone conveys competence
+- Appropriate for formal contexts
+
+### For Healthcare/Wellness
+- **Recommended**: `shimmer` or `nova`
+- Calming, reassuring tone reduces anxiety
+- Gentle delivery for sensitive topics
+
+### For Entertainment/Creative
+- **Recommended**: `fable` or `nova`
+- Expressive delivery engages listeners
+- Dynamic intonation maintains interest
+
+## Advanced: Voice Parameters
+
+The OpenAI Realtime API uses the voice parameter as specified. Currently, there are no additional voice customization options like:
+- Pitch adjustment
+- Speed control
+- Volume settings
+
+These are handled automatically by the API to ensure natural-sounding speech.
+
+<Note>
+  The AI automatically adjusts pacing and tone based on conversation context, regardless of the selected voice.
+</Note>
+
+## Gemini Voice (Legacy)
+
+If you're using Gemini instead of OpenAI Realtime, configure the voice in the `gemini` section:
+
+```yaml
+gemini:
+  api_key: ${GEMINI_API_KEY}
+  model: "models/gemini-2.5-flash-native-audio-latest"
+  voice: "Zephyr"  # Gemini voice options
+```
+
+Available Gemini voices:
+- `Zephyr` (default)
+- `Coral`
+- `Breeze`
+- `Nova`
+
+<Warning>
+  Gemini voices are only used when `openai_realtime.enabled: false`. The default configuration uses OpenAI Realtime for better transcription accuracy.
+</Warning>
+
+## Troubleshooting
+
+### Voice not changing
+
+If the voice doesn't change after updating `config.yaml`:
+
+1. **Restart the server**:
+```bash
+agenticai service restart
+```
+
+2. **Verify the config**:
+```bash
+cat config.yaml | grep voice
+```
+
+3. **Check logs** for configuration errors:
+```bash
+agenticai service logs -f
+```
+
+### Invalid voice name
+
+If you see an error about invalid voice:
+- Check spelling (case-sensitive: `alloy`, not `Alloy`)
+- Verify it's one of the six supported voices
+- Check for extra spaces or quotes
+
+### Voice sounds wrong
+
+If the voice doesn't match expectations:
+- Try a different voice from the list above
+- Check that `openai_realtime.enabled: true`
+- Verify your OpenAI API key has Realtime API access
+- Check audio quality issues aren't affecting perception
+
+## Related Configuration
+
+- [Environment Variables](/configuration/environment) - Set up `OPENAI_API_KEY`
+- [Configuration File](/configuration/config-file) - Full `config.yaml` reference
+- [OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime) - Official documentation

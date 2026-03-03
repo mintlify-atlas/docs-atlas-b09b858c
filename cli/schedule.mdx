@@ -1,0 +1,323 @@
+---
+title: agenticai schedule
+description: Manage scheduled calls and run schedules on demand
+---
+
+Manage and execute scheduled calls. Schedules are configured in `schedules.yaml` and can be listed, run manually, or executed automatically in daemon mode.
+
+## Commands
+
+### agenticai schedule list
+
+List all configured schedules from `schedules.yaml`.
+
+```bash
+agenticai schedule list
+```
+
+**Example Output:**
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    Configured Schedules                      │
+├──────────────┬────────────────┬─────────┬──────────────────┤
+│ Name         │ Cron           │ Enabled │ Calls            │
+├──────────────┼────────────────┼─────────┼──────────────────┤
+│ morning-call │ 0 9 * * *      │ Yes     │ 3                │
+│ reminders    │ 0 14 * * 1-5   │ Yes     │ 5                │
+│ test-sched   │ */15 * * * *   │ No      │ 1                │
+└──────────────┴────────────────┴─────────┴──────────────────┘
+```
+
+### agenticai schedule run
+
+Run a specific schedule immediately (useful for testing).
+
+```bash
+agenticai schedule run NAME [OPTIONS]
+```
+
+#### Arguments
+
+<ParamField path="NAME" type="string" required>
+  Name of the schedule to run (as defined in `schedules.yaml`)
+  
+  **Example:**
+  ```bash
+  agenticai schedule run morning-call
+  ```
+</ParamField>
+
+#### Options
+
+<ParamField path="--webhook-url" type="string" required>
+  Public webhook base URL for Twilio callbacks
+  
+  **Short form:** `-w`
+  
+  **Required:** Yes
+  
+  **Example:**
+  ```bash
+  agenticai schedule run morning-call --webhook-url https://abc123.ngrok.io
+  ```
+</ParamField>
+
+## Schedule Configuration
+
+Schedules are defined in `schedules.yaml`:
+
+```yaml
+schedules:
+  - name: "morning-reminders"
+    cron: "0 9 * * *"  # Daily at 9 AM
+    enabled: true
+    calls:
+      - to: "+15551234567"
+        prompt: "Good morning! This is your daily reminder."
+        metadata:
+          type: "reminder"
+          category: "morning"
+      
+      - to: "+15559876543"
+        prompt: "Morning check-in call."
+        metadata:
+          type: "checkin"
+
+  - name: "weekly-survey"
+    cron: "0 14 * * 5"  # Fridays at 2 PM
+    enabled: true
+    calls:
+      - to: "+15551234567"
+        prompt: "Weekly satisfaction survey."
+```
+
+### Cron Format
+
+```
+┌───────────── minute (0 - 59)
+│ ┌───────────── hour (0 - 23)
+│ │ ┌───────────── day of month (1 - 31)
+│ │ │ ┌───────────── month (1 - 12)
+│ │ │ │ ┌───────────── day of week (0 - 6) (Sunday=0)
+│ │ │ │ │
+* * * * *
+```
+
+**Examples:**
+- `0 9 * * *` - Daily at 9:00 AM
+- `0 14 * * 1-5` - Weekdays at 2:00 PM
+- `*/15 * * * *` - Every 15 minutes
+- `0 0 1 * *` - First day of every month at midnight
+- `0 17 * * 5` - Every Friday at 5:00 PM
+
+## Examples
+
+### List All Schedules
+
+```bash
+agenticai schedule list
+```
+
+Shows all schedules from `schedules.yaml`, including disabled ones.
+
+### Run Schedule Immediately
+
+Test a schedule before enabling it:
+
+```bash
+# Start server first
+agenticai server
+
+# In another terminal
+export NGROK_URL=https://abc123.ngrok.io
+agenticai schedule run "morning-reminders" --webhook-url $NGROK_URL
+```
+
+**Output:**
+```
+Running schedule: morning-reminders
+Initiated 2 call(s)
+  Call ID: CA1234567890abcdef1234567890abcdef
+  Call ID: CA9876543210fedcba9876543210fedcba
+Waiting for calls to complete... (Ctrl+C to exit)
+```
+
+The command waits for all calls to complete. Press Ctrl+C to exit early.
+
+### Run in Daemon Mode
+
+For automatic execution, use daemon mode:
+
+```bash
+agenticai daemon --webhook-url https://your-permanent-url.com
+```
+
+This starts the server and scheduler together. Enabled schedules run automatically at their configured times.
+
+**Output:**
+```
+Starting Agentic AI in daemon mode
+Scheduler started
+  morning-reminders: 2026-03-04 09:00:00
+  weekly-survey: 2026-03-05 14:00:00
+INFO:     Uvicorn running on http://0.0.0.0:8080
+```
+
+## Workflow
+
+### Development
+
+1. **Create schedule** in `schedules.yaml`:
+   ```yaml
+   schedules:
+     - name: "test-call"
+       cron: "*/5 * * * *"  # Every 5 minutes
+       enabled: false  # Disabled for testing
+       calls:
+         - to: "+15551234567"
+           prompt: "Test call"
+   ```
+
+2. **Test manually:**
+   ```bash
+   agenticai server
+   # In another terminal:
+   agenticai schedule run "test-call" --webhook-url https://abc123.ngrok.io
+   ```
+
+3. **Enable and run in daemon:**
+   ```yaml
+   enabled: true  # Enable in schedules.yaml
+   ```
+   ```bash
+   agenticai daemon --webhook-url https://abc123.ngrok.io
+   ```
+
+### Production
+
+1. **Install service:**
+   ```bash
+   agenticai service install --webhook-url https://permanent-url.com
+   agenticai service start
+   ```
+
+2. **Verify schedules:**
+   ```bash
+   agenticai schedule list
+   ```
+
+3. **Monitor logs:**
+   ```bash
+   agenticai service logs -f
+   ```
+
+Schedules run automatically in the background.
+
+## Schedule Metadata
+
+Each call can include metadata for tracking:
+
+```yaml
+calls:
+  - to: "+15551234567"
+    prompt: "Reminder call"
+    metadata:
+      campaign_id: "summer-2026"
+      type: "reminder"
+      priority: "high"
+```
+
+Metadata is:
+- Logged in server logs
+- Sent to OpenClaw Gateway
+- Included in Telegram notifications
+- Available in Twilio call records
+
+## Error Handling
+
+### Schedule Not Found
+
+**Error:**
+```
+Error: Schedule 'non-existent' not found
+```
+
+**Solution:** Check available schedules:
+```bash
+agenticai schedule list
+```
+
+### Invalid Cron Expression
+
+**Error:**
+```
+Error loading schedules: Invalid cron expression
+```
+
+**Solution:** Verify cron syntax in `schedules.yaml`. Use [crontab.guru](https://crontab.guru/) to validate.
+
+### Missing Webhook URL
+
+**Error:**
+```
+Error: Missing option '--webhook-url' / '-w'
+```
+
+**Solution:** Provide the webhook URL:
+```bash
+agenticai schedule run morning-call --webhook-url https://your-url.ngrok.io
+```
+
+### No Calls Defined
+
+If a schedule has an empty `calls` array, it runs but does nothing:
+
+```
+Running schedule: empty-schedule
+Initiated 0 call(s)
+```
+
+## Schedule Management Tips
+
+### Testing New Schedules
+
+1. Set `enabled: false` initially
+2. Run manually with `schedule run`
+3. Verify call behavior
+4. Enable and deploy
+
+### Bulk Calls
+
+Schedules support multiple calls:
+
+```yaml
+calls:
+  - to: "+15551111111"
+    prompt: "Call 1"
+  - to: "+15552222222"
+    prompt: "Call 2"
+  - to: "+15553333333"
+    prompt: "Call 3"
+```
+
+All calls start simultaneously when the schedule runs.
+
+### Time Zones
+
+Cron times are based on the server's system time. For consistent scheduling:
+
+```bash
+# Check server timezone
+date
+timedatectl  # Linux
+
+# Set timezone if needed
+sudo timedatectl set-timezone America/New_York
+```
+
+## See Also
+
+- [Server Command](/cli/server) - Start the webhook server
+- [Daemon Mode](/cli/server#daemon-mode) - Run server with scheduler
+- [Service Commands](/cli/service) - Background service management
+- [Trigger Command](/cli/trigger) - Manual call triggering

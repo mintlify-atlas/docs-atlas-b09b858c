@@ -1,0 +1,485 @@
+---
+title: agenticai service
+description: Manage Agentic AI as a background service on macOS
+---
+
+Install, manage, and monitor Agentic AI as a background service using macOS launchd. The service automatically starts on login and restarts on crash.
+
+<Note>
+  These commands are macOS-specific and use launchd. For Linux, use systemd or supervisor. For Windows, use NSSM or Task Scheduler.
+</Note>
+
+## Commands
+
+### agenticai service install
+
+Install Agentic AI as a background service.
+
+```bash
+agenticai service install [OPTIONS]
+```
+
+#### Options
+
+<ParamField path="--webhook-url" type="string" required>
+  Permanent public webhook URL for Twilio callbacks
+  
+  **Short form:** `-w`
+  
+  **Required:** Yes
+  
+  **Important:** Use a permanent tunnel (e.g., Cloudflare Tunnel, ngrok paid plan) for production
+  
+  **Example:**
+  ```bash
+  agenticai service install --webhook-url https://permanent-tunnel.trycloudflare.com
+  ```
+</ParamField>
+
+#### What It Does
+
+1. Creates a launchd plist file at `~/Library/LaunchAgents/com.agenticai.server.plist`
+2. Configures the service to:
+   - Start automatically on login
+   - Restart on crash
+   - Log to `/tmp/agenticai/`
+3. Loads the service into launchd
+
+**Example Output:**
+```
+┌──────────────────────────────────────────────────┐
+│ Installing Agentic AI Service                    │
+│                                                  │
+│ Webhook URL: https://tunnel.trycloudflare.com    │
+│ Plist Path: ~/Library/LaunchAgents/...           │
+└──────────────────────────────────────────────────┘
+
+✓ Created ~/Library/LaunchAgents/com.agenticai.server.plist
+✓ Service installed and loaded
+
+Next steps:
+  • Start service: agenticai service start
+  • Check status: agenticai service status
+  • View logs: tail -f /tmp/agenticai/agenticai.log
+```
+
+### agenticai service start
+
+Start the background service.
+
+```bash
+agenticai service start
+```
+
+**Example Output:**
+```
+✓ Service started
+View logs: tail -f /tmp/agenticai/agenticai.log
+```
+
+### agenticai service stop
+
+Stop the background service.
+
+```bash
+agenticai service stop
+```
+
+**Example Output:**
+```
+✓ Service stopped
+```
+
+### agenticai service restart
+
+Restart the background service.
+
+```bash
+agenticai service restart
+```
+
+**Example Output:**
+```
+✓ Service restarted
+```
+
+### agenticai service status
+
+Check the status of the background service.
+
+```bash
+agenticai service status
+```
+
+**Example Output (running):**
+```
+┌─────────────────────────────────┐
+│ Agentic AI Service Status       │
+└─────────────────────────────────┘
+
+✓ Service installed
+  Plist: ~/Library/LaunchAgents/com.agenticai.server.plist
+✓ Service running (PID: 12345)
+
+Recent logs:
+  2026-03-03T10:30:45 [info] Starting server on 0.0.0.0:8080
+  2026-03-03T10:30:46 [info] Uvicorn running on http://0.0.0.0:8080
+  2026-03-03T10:31:15 [info] Incoming call from +15551234567
+  2026-03-03T10:31:45 [info] Call completed duration=30s
+  2026-03-03T10:32:00 [info] Server healthy
+
+Full logs: tail -f /tmp/agenticai/agenticai.log
+```
+
+**Example Output (not running):**
+```
+┌─────────────────────────────────┐
+│ Agentic AI Service Status       │
+└─────────────────────────────────┘
+
+✓ Service installed
+  Plist: ~/Library/LaunchAgents/com.agenticai.server.plist
+✗ Service not running
+
+Full logs: tail -f /tmp/agenticai/agenticai.log
+```
+
+### agenticai service logs
+
+View service logs.
+
+```bash
+agenticai service logs [OPTIONS]
+```
+
+#### Options
+
+<ParamField path="--follow" type="boolean" default={false}>
+  Follow log output (like `tail -f`)
+  
+  **Short form:** `-f`
+  
+  **Example:**
+  ```bash
+  agenticai service logs --follow
+  ```
+</ParamField>
+
+<ParamField path="--lines" type="integer" default={50}>
+  Number of lines to show
+  
+  **Short form:** `-n`
+  
+  **Example:**
+  ```bash
+  agenticai service logs --lines 100
+  ```
+</ParamField>
+
+**Example Output:**
+```bash
+# Show last 50 lines
+agenticai service logs
+
+# Show last 200 lines
+agenticai service logs -n 200
+
+# Follow logs in real-time
+agenticai service logs -f
+```
+
+### agenticai service uninstall
+
+Uninstall the background service.
+
+```bash
+agenticai service uninstall
+```
+
+**Example Output:**
+```
+Uninstalling Agentic AI Service
+✓ Service uninstalled
+```
+
+## Service Configuration
+
+The service is configured via launchd plist:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" ...>
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.agenticai.server</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/agenticai</string>
+        <string>server</string>
+    </array>
+    
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+    
+    <key>StandardOutPath</key>
+    <string>/tmp/agenticai/agenticai.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/tmp/agenticai/agenticai-error.log</string>
+</dict>
+</plist>
+```
+
+### Key Features
+
+- **RunAtLoad:** Service starts automatically on login
+- **KeepAlive:** Service restarts on crash
+- **ThrottleInterval:** 10-second delay between restart attempts
+- **Logs:** Stored in `/tmp/agenticai/`
+
+## Log Files
+
+The service writes to:
+
+- **Standard output:** `/tmp/agenticai/agenticai.log`
+- **Error output:** `/tmp/agenticai/agenticai-error.log`
+
+### View Logs
+
+```bash
+# Using service command
+agenticai service logs -f
+
+# Using tail directly
+tail -f /tmp/agenticai/agenticai.log
+
+# View errors
+tail -f /tmp/agenticai/agenticai-error.log
+
+# Search logs
+grep "error" /tmp/agenticai/agenticai.log
+```
+
+## Examples
+
+### First-Time Setup
+
+```bash
+# 1. Start a permanent tunnel
+agenticai tunnel start --provider cloudflare
+# Copy the URL shown (e.g., https://abc-def-123.trycloudflare.com)
+
+# 2. Install service with tunnel URL
+agenticai service install --webhook-url https://abc-def-123.trycloudflare.com
+
+# 3. Start the service
+agenticai service start
+
+# 4. Verify it's running
+agenticai service status
+
+# 5. Test a call
+agenticai trigger --to +15551234567
+```
+
+### Updating Configuration
+
+After modifying `config.yaml` or `.env`:
+
+```bash
+# Restart to apply changes
+agenticai service restart
+
+# Verify changes took effect
+agenticai service logs -n 20
+```
+
+### Changing Webhook URL
+
+If your tunnel URL changes:
+
+```bash
+# Reinstall with new URL
+agenticai service install --webhook-url https://new-url.ngrok.io
+
+# Service will restart automatically
+agenticai service status
+```
+
+### Troubleshooting
+
+If service won't start:
+
+```bash
+# Check status
+agenticai service status
+
+# View recent errors
+agenticai service logs -n 50
+
+# Check error log
+tail -f /tmp/agenticai/agenticai-error.log
+
+# Manual restart
+agenticai service restart
+```
+
+## Production Deployment
+
+### Recommended Setup
+
+1. **Use a permanent tunnel:**
+   ```bash
+   # Cloudflare Tunnel (free)
+   cloudflared tunnel --url http://localhost:8080
+   
+   # Or ngrok paid plan for fixed URL
+   ngrok http 8080 --domain your-domain.ngrok.io
+   ```
+
+2. **Install service:**
+   ```bash
+   agenticai service install --webhook-url https://permanent-url.com
+   ```
+
+3. **Configure Twilio webhook:**
+   - Go to Twilio Console → Phone Numbers
+   - Set webhook to: `https://permanent-url.com/twilio/voice`
+
+4. **Enable schedules** in `schedules.yaml`
+
+5. **Monitor:**
+   ```bash
+   agenticai service status
+   agenticai service logs -f
+   ```
+
+### Health Monitoring
+
+Set up external monitoring:
+
+```bash
+# Ping health endpoint every 5 minutes
+*/5 * * * * curl -f http://localhost:8080/health || echo "Service down!"
+```
+
+Or use a service like UptimeRobot, Pingdom, or Better Uptime.
+
+## Platform-Specific Notes
+
+### macOS (launchd)
+
+The service commands use launchd:
+
+```bash
+# Manual launchd commands
+launchctl load ~/Library/LaunchAgents/com.agenticai.server.plist
+launchctl unload ~/Library/LaunchAgents/com.agenticai.server.plist
+launchctl list | grep agenticai
+```
+
+### Linux (systemd)
+
+For Linux, create a systemd service:
+
+```ini
+# /etc/systemd/system/agenticai.service
+[Unit]
+Description=Agentic AI Server
+After=network.target
+
+[Service]
+Type=simple
+User=your-user
+WorkingDirectory=/path/to/project
+Environment="AGENTICAI_WEBHOOK_URL=https://your-url.com"
+ExecStart=/path/to/venv/bin/agenticai server
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable agenticai
+sudo systemctl start agenticai
+sudo systemctl status agenticai
+```
+
+### Windows (NSSM)
+
+For Windows, use NSSM (Non-Sucking Service Manager):
+
+```cmd
+nssm install AgenticAI "C:\path\to\venv\Scripts\agenticai.exe" server
+nssm set AgenticAI AppDirectory "C:\path\to\project"
+nssm start AgenticAI
+```
+
+## Troubleshooting
+
+### Service Won't Start
+
+**Check logs:**
+```bash
+agenticai service logs -n 100
+tail -f /tmp/agenticai/agenticai-error.log
+```
+
+**Common issues:**
+- Missing config.yaml
+- Invalid credentials in .env
+- Port 8080 already in use
+- Permission issues
+
+### Service Not Installed
+
+**Error:** `Service not installed.`
+
+**Solution:**
+```bash
+agenticai service install --webhook-url https://your-url.com
+```
+
+### Service Already Running
+
+**Error:** `Service is already running.`
+
+**Solution:** Stop first:
+```bash
+agenticai service stop
+agenticai service start
+```
+
+Or restart:
+```bash
+agenticai service restart
+```
+
+### Logs Empty or Missing
+
+If `/tmp/agenticai/agenticai.log` is empty:
+
+1. Service may not have started
+2. Check `/tmp/agenticai/agenticai-error.log`
+3. Verify plist is loaded:
+   ```bash
+   launchctl list | grep agenticai
+   ```
+
+## See Also
+
+- [Server Command](/cli/server) - Run server in foreground
+- [Tunnel Commands](/cli/tunnel) - Set up public webhooks
+- [Status Command](/cli/status) - Check system status
+- [Schedule Commands](/cli/schedule) - Manage scheduled calls

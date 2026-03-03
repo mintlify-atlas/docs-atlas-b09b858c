@@ -1,0 +1,270 @@
+---
+title: agenticai server
+description: Start the webhook server for handling Twilio calls
+---
+
+Starts the FastAPI webhook server that handles incoming Twilio calls and media streams.
+
+## Usage
+
+```bash
+agenticai server [OPTIONS]
+```
+
+## Options
+
+<ParamField path="--host" type="string" default="0.0.0.0">
+  Server host to bind to
+  
+  **Short form:** `-h`
+  
+  **Default:** Loaded from `config.yaml` (`server.host`), typically `0.0.0.0`
+  
+  **Example:**
+  ```bash
+  agenticai server --host 127.0.0.1
+  ```
+</ParamField>
+
+<ParamField path="--port" type="integer" default="8080">
+  Server port to listen on
+  
+  **Short form:** `-p`
+  
+  **Default:** Loaded from `config.yaml` (`server.port`), typically `8080`
+  
+  **Example:**
+  ```bash
+  agenticai server --port 3000
+  ```
+</ParamField>
+
+<ParamField path="--config" type="string" default="config.yaml">
+  Path to configuration file
+  
+  **Short form:** `-c`
+  
+  **Global option** - Applies to all commands
+  
+  **Example:**
+  ```bash
+  agenticai --config custom.yaml server
+  ```
+</ParamField>
+
+## What It Does
+
+The server command:
+
+1. Loads configuration from `config.yaml` and `.env`
+2. Starts a FastAPI application with:
+   - Twilio webhook endpoints (`/twilio/voice`, `/twilio/stream`)
+   - Health check endpoint (`/health`)
+   - Call API endpoint (`/api/call`)
+3. Initializes the CallManager for handling phone calls
+4. Sets up WebSocket connections for Twilio Media Streams
+5. Runs indefinitely until stopped (Ctrl+C)
+
+## Endpoints
+
+When the server starts, the following endpoints are available:
+
+### Voice Webhook
+```
+POST /twilio/voice
+```
+Handles incoming calls from Twilio. Returns TwiML to establish media stream.
+
+### Media Stream WebSocket
+```
+WS /twilio/stream
+```
+Bidirectional WebSocket for real-time audio streaming between Twilio and OpenAI Realtime API.
+
+### Call API
+```
+POST /api/call
+```
+Trigger outbound calls programmatically (used by `agenticai trigger`).
+
+### Health Check
+```
+GET /health
+```
+Returns `200 OK` if server is running.
+
+## Examples
+
+### Basic Usage
+
+Start the server with default settings:
+
+```bash
+agenticai server
+```
+
+**Output:**
+```
+Starting server on 0.0.0.0:8080
+Webhook path: /twilio/voice
+WebSocket path: /twilio/stream
+INFO:     Started server process [12345]
+INFO:     Uvicorn running on http://0.0.0.0:8080
+```
+
+### Custom Port
+
+Run on a different port:
+
+```bash
+agenticai server --port 3000
+```
+
+### Localhost Only
+
+Bind to localhost for development:
+
+```bash
+agenticai server --host 127.0.0.1 --port 8080
+```
+
+### Custom Configuration
+
+Use a different config file:
+
+```bash
+agenticai --config production.yaml server
+```
+
+## Development Workflow
+
+Typical development setup:
+
+```bash
+# Terminal 1: Start the server
+agenticai server
+
+# Terminal 2: Start ngrok tunnel
+ngrok http 8080
+# Copy the HTTPS URL (e.g., https://abc123.ngrok.io)
+
+# Terminal 3: Set environment variable and trigger calls
+export NGROK_URL=https://abc123.ngrok.io
+agenticai trigger --to +15551234567
+```
+
+## Production Notes
+
+<Warning>
+  The `server` command runs in the foreground and will stop when the terminal closes. For production use:
+  
+  - Use [`agenticai daemon`](/cli/server#daemon-mode) for server + scheduler
+  - Or use [`agenticai service install`](/cli/service) to run as a background service
+</Warning>
+
+## Daemon Mode
+
+For running the server with the scheduler enabled:
+
+```bash
+agenticai daemon --webhook-url https://your-permanent-url.com
+```
+
+This runs the server plus the call scheduler for automated calls.
+
+### Daemon Options
+
+<ParamField path="--webhook-url" type="string" required>
+  Public webhook base URL for Twilio callbacks
+  
+  **Short form:** `-w`
+  
+  **Example:**
+  ```bash
+  agenticai daemon --webhook-url https://your-url.ngrok.io
+  ```
+</ParamField>
+
+**Example Output:**
+```
+Starting Agentic AI in daemon mode
+Scheduler started
+  morning-reminders: 2026-03-04 09:00:00
+  afternoon-followup: 2026-03-04 14:00:00
+INFO:     Uvicorn running on http://0.0.0.0:8080
+```
+
+## Logs
+
+The server logs all events using structlog:
+
+- Request handling
+- WebSocket connections
+- Call lifecycle events
+- Audio stream status
+- Gateway messages
+
+**Example log output:**
+```
+2026-03-03T10:30:45 [info     ] Incoming call from +15551234567 call_id=CA123...
+2026-03-03T10:30:46 [info     ] WebSocket connected           stream_sid=ST456...
+2026-03-03T10:30:47 [info     ] OpenAI Realtime session started
+2026-03-03T10:31:15 [info     ] Call completed                duration=28s
+```
+
+## Configuration
+
+The server uses these config values:
+
+```yaml
+server:
+  host: "0.0.0.0"        # Overridden by --host
+  port: 8080             # Overridden by --port
+  webhook_path: "/twilio/voice"
+  websocket_path: "/twilio/stream"
+
+twilio:
+  account_sid: ${TWILIO_ACCOUNT_SID}
+  auth_token: ${TWILIO_AUTH_TOKEN}
+  from_number: ${TWILIO_PHONE_NUMBER}
+
+openai_realtime:
+  api_key: ${OPENAI_API_KEY}
+  model: "gpt-4o-realtime-preview-2024-12-17"
+  voice: "alloy"
+```
+
+## Troubleshooting
+
+### Server won't start
+
+**Error:** `Address already in use`
+
+**Solution:** Port 8080 is already in use. Either stop the other process or use a different port:
+```bash
+agenticai server --port 3000
+```
+
+### Configuration not found
+
+**Error:** `Configuration file not found. Create config.yaml first.`
+
+**Solution:** Create `config.yaml` or run the setup wizard:
+```bash
+agenticai setup
+```
+
+### Twilio webhooks failing
+
+**Checklist:**
+1. Server is running and accessible
+2. ngrok/tunnel is active
+3. Twilio webhook URL is set to `https://your-url.ngrok.io/twilio/voice`
+4. Firewall allows incoming connections on port 8080
+
+## See Also
+
+- [Trigger Command](/cli/trigger) - Quick call testing
+- [Service Commands](/cli/service) - Run as background service
+- [Daemon Mode](/cli/server#daemon-mode) - Server with scheduler
+- [Status Command](/cli/status) - Check server status

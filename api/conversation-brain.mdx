@@ -1,0 +1,339 @@
+---
+title: 'ConversationBrain'
+description: 'Conversation brain with memory and intent understanding'
+---
+
+The `ConversationBrain` class uses Gemini to understand user intent, extract actionable commands, and maintain conversation context throughout a call.
+
+## Overview
+
+`ConversationBrain` provides:
+- Real-time intent analysis from conversation transcripts
+- Command detection and parameter extraction
+- Conversation memory and context management
+- Integration with ClawdBot agent for command execution
+- Intelligent buffering of word-by-word transcripts into complete utterances
+
+## Constructor
+
+```python
+from agenticai.core.conversation_brain import ConversationBrain
+
+brain = ConversationBrain(
+    api_key="your-gemini-api-key",
+    model="gemini-3-flash-preview",
+    telegram_chat_id="123456789",
+    call_id="call-123"
+)
+```
+
+<ParamField path="api_key" type="str" required>
+  Gemini API key for intent understanding and analysis.
+</ParamField>
+
+<ParamField path="model" type="str" default="gemini-3-flash-preview">
+  Gemini model to use for intent analysis.
+</ParamField>
+
+<ParamField path="telegram_client" type="TelegramDirectClient" default="None">
+  Legacy parameter, not used in current implementation.
+</ParamField>
+
+<ParamField path="telegram_chat_id" type="str" default="">
+  Telegram chat ID for sending executable commands to ClawdBot agent.
+</ParamField>
+
+<ParamField path="call_id" type="str" default="">
+  Unique identifier for the call session.
+</ParamField>
+
+## Methods
+
+### set_callbacks
+
+```python
+def set_callbacks(
+    self,
+    on_command: Callable[[str, dict], Awaitable[None]] | None = None,
+    on_clawdbot_response: Callable[[str], Awaitable[None]] | None = None,
+)
+```
+
+Registers event callbacks for command detection and ClawdBot responses.
+
+<ParamField path="on_command" type="Callable" default="None">
+  Async callback invoked when a command is detected. Receives `(action: str, command: dict)`.
+</ParamField>
+
+<ParamField path="on_clawdbot_response" type="Callable" default="None">
+  Async callback invoked with ClawdBot's response text to speak it back to the user.
+</ParamField>
+
+**Example:**
+```python
+async def handle_command(action: str, command: dict):
+    print(f"Command detected: {action}")
+    print(f"Parameters: {command}")
+
+async def speak_response(text: str):
+    print(f"ClawdBot says: {text}")
+    # Send to voice synthesis
+
+brain.set_callbacks(
+    on_command=handle_command,
+    on_clawdbot_response=speak_response
+)
+```
+
+---
+
+### add_assistant_transcript
+
+```python
+def add_assistant_transcript(self, text: str)
+```
+
+Adds an assistant transcript fragment to the buffer. Gemini sends incremental fragments which are concatenated.
+
+<ParamField path="text" type="str" required>
+  Transcript fragment from the assistant.
+</ParamField>
+
+**Example:**
+```python
+brain.add_assistant_transcript("Hello, ")
+brain.add_assistant_transcript("how can I help you?")
+```
+
+---
+
+### add_user_transcript
+
+```python
+def add_user_transcript(self, text: str)
+```
+
+Adds a user transcript fragment to the buffer. Fragments are accumulated until a complete turn is detected.
+
+<ParamField path="text" type="str" required>
+  Transcript fragment from the user.
+</ParamField>
+
+**Example:**
+```python
+brain.add_user_transcript("Please send ")
+brain.add_user_transcript("an email ")
+brain.add_user_transcript("to John")
+```
+
+---
+
+### flush_assistant_turn
+
+```python
+async def flush_assistant_turn(self)
+```
+
+Flushes the buffered assistant transcript as a complete conversation turn. Should be called when the assistant finishes speaking.
+
+**Example:**
+```python
+# After assistant finishes speaking
+await brain.flush_assistant_turn()
+```
+
+---
+
+### flush_user_turn
+
+```python
+async def flush_user_turn(self)
+```
+
+Flushes the buffered user transcript as a complete turn and analyzes intent. If the request is actionable, it's sent to ClawdBot for execution.
+
+**Example:**
+```python
+# After user finishes speaking
+await brain.flush_user_turn()
+```
+
+---
+
+### get_memory_summary
+
+```python
+def get_memory_summary(self) -> str
+```
+
+Returns a formatted summary of the conversation memory.
+
+<ResponseField name="summary" type="str">
+  Multi-line string containing call ID, turn count, extracted information, and recent conversation history.
+</ResponseField>
+
+**Example:**
+```python
+summary = brain.get_memory_summary()
+print(summary)
+# Output:
+# Call ID: call-123
+# Total turns: 8
+# Recent conversation:
+# User: Can you send an email to John?
+# Assistant: I'll send that email to John now.
+# ...
+```
+
+---
+
+### get_extracted_info
+
+```python
+def get_extracted_info(self) -> dict
+```
+
+Returns information extracted from the conversation (e.g., names, preferences, context).
+
+<ResponseField name="extracted_info" type="dict">
+  Dictionary of extracted information from the conversation.
+</ResponseField>
+
+**Example:**
+```python
+info = brain.get_extracted_info()
+print(info)
+# Output: {"recipient": "John", "subject": "Meeting tomorrow"}
+```
+
+---
+
+### send_call_summary
+
+```python
+def send_call_summary(self, duration: float)
+```
+
+Logs a summary of the call including duration and detected commands.
+
+<ParamField path="duration" type="float" required>
+  Call duration in seconds.
+</ParamField>
+
+**Example:**
+```python
+brain.send_call_summary(duration=125.5)
+# Logs: Call ended (126s) - Commands: ['send_message: Hello → John', 'search_web: restaurants']
+```
+
+## Data Classes
+
+### ConversationTurn
+
+Represents a complete conversation turn:
+
+```python
+@dataclass
+class ConversationTurn:
+    speaker: str              # "user" or "assistant"
+    text: str                 # Complete utterance
+    timestamp: datetime       # When the turn occurred
+    intent: str | None        # Detected intent (e.g., "send_message", "search_web")
+    command: dict | None      # Parsed command with parameters
+```
+
+### ConversationMemory
+
+Manages conversation history:
+
+```python
+@dataclass
+class ConversationMemory:
+    call_id: str                          # Call identifier
+    turns: list[ConversationTurn]         # All conversation turns
+    context: dict                          # Persistent context
+    extracted_info: dict                   # Extracted information
+    
+    def add_turn(self, speaker: str, text: str, 
+                 intent: str = None, command: dict = None) -> ConversationTurn
+    
+    def get_recent_context(self, max_turns: int = 10) -> str
+    
+    def to_summary(self) -> str
+```
+
+## Intent Analysis
+
+The brain uses intelligent heuristics and LLM-based analysis to determine if user requests are actionable:
+
+### Quick Heuristics
+
+**Non-actionable phrases** (skips LLM call for efficiency):
+- Greetings: "hi", "hello", "hey"
+- Acknowledgments: "okay", "thanks", "yes", "no"
+- Short responses: Less than 3 characters
+
+**Action keywords** (immediately actionable):
+- Command verbs: "open", "play", "search", "send", "call"
+- Service names: "email", "youtube", "spotify", "google"
+
+### LLM Analysis
+
+For ambiguous requests, the brain uses Gemini to classify intent:
+
+```python
+# Returns: (intent, command_dict, is_actionable)
+intent, command, actionable = await brain._analyze_intent(
+    "Can you play some music?"
+)
+# intent = "action"
+# command = {"original_request": "Can you play some music?"}
+# actionable = True
+```
+
+## Complete Example
+
+```python
+import asyncio
+from agenticai.core.conversation_brain import ConversationBrain
+
+async def main():
+    # Initialize brain
+    brain = ConversationBrain(
+        api_key="your-api-key",
+        telegram_chat_id="123456789",
+        call_id="demo-call"
+    )
+    
+    # Set up callbacks
+    async def on_command(action: str, cmd: dict):
+        print(f"Executing: {action}")
+    
+    async def on_response(text: str):
+        print(f"Speaking: {text}")
+    
+    brain.set_callbacks(
+        on_command=on_command,
+        on_clawdbot_response=on_response
+    )
+    
+    # Simulate conversation
+    brain.add_user_transcript("Send ")
+    brain.add_user_transcript("an email ")
+    brain.add_user_transcript("to Sarah")
+    
+    # Flush when user stops speaking
+    await brain.flush_user_turn()
+    # Analyzes intent and sends to ClawdBot if actionable
+    
+    # Get conversation summary
+    summary = brain.get_memory_summary()
+    print(summary)
+
+asyncio.run(main())
+```
+
+## Related Classes
+
+- [`AudioBridge`](/api/audio-bridge) - Uses ConversationBrain for transcript processing
+- [`CallManager`](/api/call-manager) - Orchestrates calls and sessions

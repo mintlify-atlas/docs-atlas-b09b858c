@@ -1,0 +1,349 @@
+---
+title: 'AudioBridge'
+description: 'Bidirectional audio bridge between Twilio and AI models'
+---
+
+The `AudioBridge` class handles real-time bidirectional audio streaming between Twilio phone calls and AI models (Gemini Live API or OpenAI Realtime API).
+
+## Overview
+
+`AudioBridge` manages:
+- Audio format conversion between Twilio (mulaw 8kHz) and AI models (PCM 16/24kHz)
+- Bidirectional audio streaming with minimal latency
+- Real-time transcription (via Gemini, OpenAI, or Whisper STT)
+- Conversation memory and intent detection via `ConversationBrain`
+- Audio buffering and silence detection
+
+## Constructor
+
+```python
+from agenticai.core.audio_bridge import AudioBridge
+from agenticai.twilio.websocket import TwilioMediaStreamHandler
+from agenticai.gemini.realtime_handler import GeminiRealtimeHandler
+
+bridge = AudioBridge(
+    twilio_handler=twilio_handler,
+    gemini_handler=gemini_handler,
+    telegram_chat_id="123456789",
+    call_id="call-123",
+    gemini_api_key="your-gemini-api-key",
+    whisper_api_key="your-openai-api-key",
+    whisper_enabled=False,
+    use_openai=False
+)
+```
+
+<ParamField path="twilio_handler" type="TwilioMediaStreamHandler" required>
+  Twilio WebSocket handler for the media stream.
+</ParamField>
+
+<ParamField path="gemini_handler" type="GeminiRealtimeHandler | OpenAIRealtimeHandler" required>
+  Real-time AI handler (works with both Gemini and OpenAI).
+</ParamField>
+
+<ParamField path="telegram_client" type="TelegramDirectClient" default="None">
+  Legacy parameter, not used in current implementation.
+</ParamField>
+
+<ParamField path="telegram_chat_id" type="str" default="">
+  Telegram chat ID for ClawdBot agent integration.
+</ParamField>
+
+<ParamField path="call_id" type="str" default="">
+  Unique identifier for the call session.
+</ParamField>
+
+<ParamField path="gemini_api_key" type="str" default="">
+  Gemini API key for the ConversationBrain.
+</ParamField>
+
+<ParamField path="whisper_api_key" type="str" default="">
+  OpenAI API key for Whisper STT (optional).
+</ParamField>
+
+<ParamField path="whisper_enabled" type="bool" default="False">
+  Whether to use Whisper for accurate speech-to-text instead of the AI model's built-in STT.
+</ParamField>
+
+<ParamField path="use_openai" type="bool" default="False">
+  Whether using OpenAI Realtime API (affects audio format conversion: 24kHz vs 16kHz).
+</ParamField>
+
+## Properties
+
+### is_running
+
+```python
+@property
+def is_running(self) -> bool
+```
+
+Returns `True` if the audio bridge is currently active.
+
+<ResponseField name="is_running" type="bool">
+  Bridge running status.
+</ResponseField>
+
+---
+
+### transcripts
+
+```python
+@property
+def transcripts(self) -> list[TranscriptEntry]
+```
+
+Returns a list of all collected transcript entries.
+
+<ResponseField name="transcripts" type="list[TranscriptEntry]">
+  List of transcript entries with speaker, text, timestamp, and finality.
+</ResponseField>
+
+---
+
+### brain
+
+```python
+@property
+def brain(self) -> ConversationBrain
+```
+
+Returns the ConversationBrain instance for accessing conversation memory and intent analysis.
+
+<ResponseField name="brain" type="ConversationBrain">
+  The conversation brain instance.
+</ResponseField>
+
+## Methods
+
+### start
+
+```python
+async def start(self)
+```
+
+Starts the audio bridge, initializes callbacks, and begins audio processing tasks.
+
+**Example:**
+```python
+bridge = AudioBridge(
+    twilio_handler=twilio_handler,
+    gemini_handler=gemini_handler,
+    call_id="call-123"
+)
+
+await bridge.start()
+print("Audio bridge is now streaming...")
+```
+
+---
+
+### stop
+
+```python
+async def stop(self)
+```
+
+Stops the audio bridge and cleans up all resources.
+
+**Example:**
+```python
+await bridge.stop()
+print("Audio bridge stopped")
+```
+
+---
+
+### get_full_transcript
+
+```python
+def get_full_transcript(self) -> str
+```
+
+Returns the complete call transcript as a formatted string.
+
+<ResponseField name="transcript" type="str">
+  Multi-line transcript with speaker labels.
+</ResponseField>
+
+**Example:**
+```python
+transcript = bridge.get_full_transcript()
+print(transcript)
+# Output:
+# User: Hello, can you help me?
+# Assistant: Of course! How can I assist you today?
+# User: I need to send an email
+# Assistant: I'll help you send that email.
+```
+
+---
+
+### get_conversation_summary
+
+```python
+def get_conversation_summary(self) -> str
+```
+
+Returns the brain's conversation summary including detected intents and commands.
+
+<ResponseField name="summary" type="str">
+  Conversation summary with metadata and context.
+</ResponseField>
+
+**Example:**
+```python
+summary = bridge.get_conversation_summary()
+print(summary)
+```
+
+## Audio Processing Pipeline
+
+### Twilio → AI Model (User Speech)
+
+1. **Receive**: Twilio sends mulaw 8kHz audio chunks
+2. **Convert**: Mulaw → PCM 16kHz (Gemini) or PCM 24kHz (OpenAI)
+3. **Buffer**: Accumulate ~50ms chunks for better STT accuracy
+4. **Send**: Forward to AI model's WebSocket
+5. **Transcribe**: Either via AI model's STT or Whisper
+6. **Analyze**: ConversationBrain detects intent and extracts commands
+
+### AI Model → Twilio (AI Speech)
+
+1. **Receive**: PCM 16/24kHz audio from AI model
+2. **Convert**: PCM → mulaw 8kHz for Twilio
+3. **Send**: Stream to phone call via Twilio WebSocket
+
+## Transcript Processing
+
+### With Gemini/OpenAI Built-in STT
+
+```python
+# Word-by-word fragments are buffered
+brain.add_user_transcript("Send ")
+brain.add_user_transcript("an ")
+brain.add_user_transcript("email")
+
+# Complete turn is flushed when user stops speaking
+await brain.flush_user_turn()
+# → "Send an email" analyzed for intent
+```
+
+### With Whisper STT
+
+```python
+# Audio buffered until silence detected
+silence_detector.process(audio_chunk)
+
+# Complete utterance transcribed at once
+transcript = await whisper.transcribe(audio_buffer)
+# → "Send an email to John" returned as complete phrase
+
+await brain.flush_user_turn()
+```
+
+## Data Classes
+
+### TranscriptEntry
+
+```python
+@dataclass
+class TranscriptEntry:
+    speaker: str          # "user" or "assistant"
+    text: str             # Transcript text
+    timestamp: datetime   # When spoken
+    is_final: bool        # Whether this is a final transcript
+```
+
+## Complete Example
+
+```python
+import asyncio
+from agenticai.core.audio_bridge import AudioBridge
+from agenticai.core.call_manager import CallManager
+from agenticai.twilio.websocket import TwilioMediaStreamHandler
+from agenticai.gemini.realtime_handler import GeminiRealtimeHandler
+
+async def run_call_with_bridge(websocket, call_id: str):
+    # Initialize handlers
+    twilio_handler = TwilioMediaStreamHandler(websocket)
+    
+    gemini_handler = GeminiRealtimeHandler(
+        api_key="your-api-key",
+        model="models/gemini-2.5-flash-native-audio-preview-12-2025",
+        voice="Puck",
+        system_instruction="You are a helpful AI assistant."
+    )
+    
+    await gemini_handler.connect(initial_prompt="Greet the caller.")
+    
+    # Create audio bridge
+    bridge = AudioBridge(
+        twilio_handler=twilio_handler,
+        gemini_handler=gemini_handler,
+        call_id=call_id,
+        gemini_api_key="your-api-key",
+        telegram_chat_id="123456789",
+        whisper_enabled=True,
+        whisper_api_key="your-openai-api-key"
+    )
+    
+    # Start streaming
+    await bridge.start()
+    print("Audio bridge running...")
+    
+    # Wait for call to complete
+    while bridge.is_running:
+        await asyncio.sleep(0.5)
+    
+    # Get results
+    transcript = bridge.get_full_transcript()
+    summary = bridge.get_conversation_summary()
+    
+    print("Call completed!")
+    print(f"Transcript:\n{transcript}")
+    print(f"\nSummary:\n{summary}")
+    
+    # Cleanup
+    await bridge.stop()
+    await gemini_handler.disconnect()
+```
+
+## Audio Format Reference
+
+| Source | Format | Sample Rate | Bit Depth |
+|--------|--------|-------------|----------|
+| Twilio | Mulaw | 8 kHz | 8-bit |
+| Gemini | PCM | 16 kHz | 16-bit |
+| OpenAI | PCM | 24 kHz | 16-bit |
+| Whisper | PCM | 16 kHz | 16-bit |
+
+## Performance Tuning
+
+### Latency Optimization
+
+```python
+# Smaller buffer = lower latency (50ms)
+self._min_chunk_size = 2400 if use_openai else 1600
+
+# Larger buffer = better STT accuracy (100ms)
+self._min_chunk_size = 4800 if use_openai else 3200
+```
+
+### Silence Detection
+
+```python
+from agenticai.audio.whisper_stt import SilenceDetector
+
+silence_detector = SilenceDetector(
+    silence_threshold=500,      # Amplitude threshold
+    silence_duration_ms=500,    # Required silence duration
+    sample_rate=16000
+)
+```
+
+## Related Classes
+
+- [`CallManager`](/api/call-manager) - Creates and manages AudioBridge instances
+- [`ConversationBrain`](/api/conversation-brain) - Handles intent detection and memory
+- [`AudioConverter`](https://github.com/your-repo) - Converts between audio formats

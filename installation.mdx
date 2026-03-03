@@ -1,0 +1,515 @@
+---
+title: Installation
+description: Detailed installation instructions for Agentic AI, including dependencies, service setup, and production deployment
+---
+
+## System Requirements
+
+Before installing Agentic AI, ensure your system meets these requirements:
+
+- **Python:** 3.11 or higher
+- **Operating System:** macOS, Linux, or Windows (WSL recommended)
+- **Network:** Internet connection for API calls
+- **Port 8080:** Available for the webhook server (configurable)
+
+## Installation Methods
+
+<Tabs>
+  <Tab title="Development Installation">
+    Recommended for development and testing:
+
+    ```bash
+    # Clone the repository
+    git clone https://github.com/IstiqlalBhat/aiagent.git
+    cd aiagent
+
+    # Create virtual environment
+    python -m venv venv
+    source venv/bin/activate  # Mac/Linux
+    # venv\Scripts\activate   # Windows
+
+    # Install in development mode
+    pip install -e .
+
+    # Verify installation
+    agenticai --help
+    ```
+
+    This installs the package in **editable mode**, allowing you to modify the source code and see changes immediately.
+  </Tab>
+
+  <Tab title="Production Installation">
+    For production deployments:
+
+    ```bash
+    # Clone the repository
+    git clone https://github.com/IstiqlalBhat/aiagent.git
+    cd aiagent
+
+    # Create virtual environment
+    python3.11 -m venv venv
+    source venv/bin/activate
+
+    # Install with production dependencies
+    pip install -e .
+
+    # Verify installation
+    agenticai --help
+    agenticai status
+    ```
+
+    <Note>
+      Production installations should use a fixed ngrok URL or Cloudflare tunnel with a custom domain.
+    </Note>
+  </Tab>
+
+  <Tab title="From PyPI (Coming Soon)">
+    Once published to PyPI, you'll be able to install directly:
+
+    ```bash
+    pip install agenticai
+    ```
+
+    <Warning>
+      This method is not yet available. Use development or production installation for now.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Dependencies
+
+Agentic AI requires these Python packages (automatically installed):
+
+<AccordionGroup>
+  <Accordion title="Core Dependencies" icon="cube">
+    ```toml
+    google-genai>=1.0.0      # Gemini AI for intent analysis
+    openai>=1.0.0            # OpenAI Realtime API
+    twilio>=9.0.0            # Twilio SDK for phone calls
+    fastapi>=0.110.0         # Web server framework
+    uvicorn[standard]>=0.27.0 # ASGI server
+    websockets>=12.0         # WebSocket support
+    ```
+  </Accordion>
+
+  <Accordion title="Audio Processing" icon="waveform">
+    ```toml
+    numpy>=1.26.0            # Numerical operations
+    soxr>=0.3.0              # Sample rate conversion
+    audioop-lts>=0.2.0       # Audio operations (mulaw encoding)
+    ```
+  </Accordion>
+
+  <Accordion title="CLI & Utilities" icon="terminal">
+    ```toml
+    click>=8.1.0             # CLI framework
+    rich>=13.7.0             # Terminal formatting
+    pyyaml>=6.0.0            # YAML configuration
+    pydantic>=2.5.0          # Data validation
+    pydantic-settings>=2.1.0 # Settings management
+    structlog>=24.1.0        # Structured logging
+    python-dotenv>=1.0.0     # Environment variable loading
+    ```
+  </Accordion>
+
+  <Accordion title="Development Dependencies" icon="code">
+    Install development dependencies for testing:
+
+    ```bash
+    pip install -e ".[dev]"
+    ```
+
+    This includes:
+    ```toml
+    pytest>=8.0.0
+    pytest-asyncio>=0.23.0
+    pytest-cov>=4.1.0
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## External Dependencies
+
+### Tunnel Software (Required for Webhooks)
+
+Choose one:
+
+<Tabs>
+  <Tab title="ngrok (Recommended)">
+    **Installation:**
+
+    ```bash
+    # macOS
+    brew install ngrok
+
+    # Linux
+    curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | \
+      sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null && \
+      echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | \
+      sudo tee /etc/apt/sources.list.d/ngrok.list && \
+      sudo apt update && sudo apt install ngrok
+
+    # Windows
+    choco install ngrok
+    ```
+
+    **Usage:**
+
+    ```bash
+    # Start tunnel
+    agenticai tunnel start
+
+    # Or directly
+    ngrok http 8080
+    ```
+
+    <Tip>
+      ngrok offers paid plans with fixed URLs, which are recommended for production.
+    </Tip>
+  </Tab>
+
+  <Tab title="Cloudflare Tunnel (Free)">
+    **Installation:**
+
+    ```bash
+    # macOS
+    brew install cloudflared
+
+    # Linux
+    wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+    sudo dpkg -i cloudflared-linux-amd64.deb
+
+    # Windows
+    # Download from https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/
+    ```
+
+    **Usage:**
+
+    ```bash
+    # Start free tunnel (random URL)
+    agenticai tunnel start --provider cloudflare
+
+    # Or directly
+    cloudflared tunnel --url http://localhost:8080
+    ```
+
+    <Note>
+      Cloudflare offers free tunnels with random URLs. For custom domains, see [Cloudflare Tunnel documentation](https://developers.cloudflare.com/cloudflare-one/).
+    </Note>
+  </Tab>
+</Tabs>
+
+### ClawdBot (Optional)
+
+For command execution during calls:
+
+```bash
+# Install OpenClaw Gateway and ClawdBot
+git clone https://github.com/openclaw/openclaw.git
+cd openclaw
+# Follow installation instructions in the repository
+
+# Start the gateway
+openclaw gateway start
+
+# Start ClawdBot agent
+clawdbot agent --session-id agent:main:main
+```
+
+<Tip>
+  ClawdBot integration is optional. Agentic AI works fine for conversations without it.
+</Tip>
+
+## Configuration
+
+### Environment Variables
+
+Create a `.env` file in your project root:
+
+```bash
+cp .env.example .env
+```
+
+Required variables:
+
+```bash .env
+# Twilio (Required)
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=your_auth_token_here
+TWILIO_PHONE_NUMBER=+1XXXXXXXXXX
+
+# OpenAI (Required)
+OPENAI_API_KEY=sk-proj-your_openai_api_key_here
+
+# Gemini (Required)
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Telegram (Optional)
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+TELEGRAM_CHAT_ID=your_telegram_chat_id_here
+
+# Tunnel (Optional)
+NGROK_URL=https://xxxx.ngrok.io
+```
+
+<Warning>
+  Never commit your `.env` file to version control! Keep your API keys secure.
+</Warning>
+
+### Configuration File
+
+The `config.yaml` file controls all application settings:
+
+```yaml config.yaml
+# OpenAI Realtime API configuration
+openai_realtime:
+  enabled: true
+  api_key: ${OPENAI_API_KEY}
+  model: "gpt-4o-realtime-preview-2024-12-17"
+  voice: "alloy"  # Options: alloy, echo, fable, onyx, nova, shimmer
+
+# Gemini for intent analysis
+gemini:
+  api_key: ${GEMINI_API_KEY}
+  model: "models/gemini-2.5-flash-native-audio-latest"
+  voice: "Zephyr"
+  system_instruction: |
+    You are a helpful AI assistant making phone calls.
+    Be concise, professional, and friendly.
+
+# Telegram integration (optional)
+telegram:
+  enabled: true
+  bot_token: ${TELEGRAM_BOT_TOKEN}
+  chat_id: ${TELEGRAM_CHAT_ID}
+
+# OpenClaw Gateway (optional)
+gateway:
+  url: "ws://127.0.0.1:18789"
+  reconnect_max_attempts: 10
+  reconnect_base_delay: 1.0
+  reconnect_max_delay: 60.0
+
+# Server settings
+server:
+  host: "0.0.0.0"
+  port: 8080
+  webhook_path: "/twilio/voice"
+  websocket_path: "/twilio/media-stream"
+
+# Logging
+logging:
+  level: "INFO"
+  format: "json"
+```
+
+<Tip>
+  Use `${VAR_NAME}` syntax to reference environment variables in `config.yaml`.
+</Tip>
+
+## Service Installation
+
+Run Agentic AI as a background service that auto-starts on boot.
+
+<Steps>
+  <Step title="Install the Service">
+    ```bash
+    agenticai service install --webhook-url https://your-tunnel-url.ngrok.io
+    ```
+
+    This creates a launchd service (macOS) that:
+    - Starts automatically on login
+    - Restarts on crash
+    - Logs to `/tmp/agenticai/`
+  </Step>
+
+  <Step title="Start the Service">
+    ```bash
+    agenticai service start
+    ```
+
+    The server now runs in the background.
+  </Step>
+
+  <Step title="Check Service Status">
+    ```bash
+    agenticai service status
+    ```
+
+    Shows service status, PID, and recent logs.
+  </Step>
+
+  <Step title="View Logs">
+    ```bash
+    # Follow logs in real-time
+    agenticai service logs -f
+
+    # Show last 50 lines
+    agenticai service logs -n 50
+    ```
+  </Step>
+</Steps>
+
+### Service Management Commands
+
+```bash
+# Stop the service
+agenticai service stop
+
+# Restart the service
+agenticai service restart
+
+# Uninstall the service
+agenticai service uninstall
+```
+
+<Note>
+  Service installation currently supports macOS via launchd. Linux systemd support is coming soon.
+</Note>
+
+## Production Deployment
+
+### Using a Fixed Webhook URL
+
+For production, use a permanent webhook URL:
+
+**Option 1: ngrok Paid Plan**
+```bash
+ngrok http 8080 --domain=your-domain.ngrok-free.app
+```
+
+**Option 2: Cloudflare Tunnel with Custom Domain**
+```bash
+cloudflared tunnel create agenticai
+cloudflared tunnel route dns agenticai calls.yourdomain.com
+cloudflared tunnel run agenticai
+```
+
+**Option 3: Deploy to Cloud**
+- Deploy to a cloud server with a public IP
+- Use a reverse proxy (nginx) with SSL
+- Point your domain to the server
+
+### Environment Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Secrets Management" icon="lock">
+    For production, use a secrets manager:
+
+    ```bash
+    # AWS Secrets Manager
+    aws secretsmanager get-secret-value --secret-id agenticai/prod
+
+    # HashiCorp Vault
+    vault kv get secret/agenticai
+
+    # Kubernetes Secrets
+    kubectl create secret generic agenticai-secrets \
+      --from-literal=OPENAI_API_KEY=sk-... \
+      --from-literal=TWILIO_AUTH_TOKEN=...
+    ```
+  </Accordion>
+
+  <Accordion title="Enable Structured Logging" icon="file-lines">
+    Set JSON logging for production:
+
+    ```yaml config.yaml
+    logging:
+      level: "INFO"
+      format: "json"  # Enables structured logs
+    ```
+
+    Then pipe to a log aggregation service:
+    ```bash
+    agenticai server | your-log-aggregator
+    ```
+  </Accordion>
+
+  <Accordion title="Monitor Service Health" icon="heart-pulse">
+    Set up health check monitoring:
+
+    ```bash
+    # Health check endpoint
+    curl https://your-domain.com/health
+
+    # Use monitoring tools
+    # - Uptime Robot
+    # - Datadog
+    # - New Relic
+    # - Prometheus + Grafana
+    ```
+  </Accordion>
+
+  <Accordion title="Rate Limiting & Quotas" icon="gauge">
+    Monitor API usage and set quotas:
+
+    - **OpenAI:** Check usage at [platform.openai.com/usage](https://platform.openai.com/usage)
+    - **Twilio:** Set budget alerts in console
+    - **Gemini:** Monitor quota at [console.cloud.google.com](https://console.cloud.google.com)
+
+    Consider implementing rate limiting in your application.
+  </Accordion>
+</AccordionGroup>
+
+## Verification
+
+Verify your installation:
+
+```bash
+# Check CLI is working
+agenticai --help
+
+# View system status
+agenticai status
+
+# Test connections
+agenticai test-connection
+
+# Check server health
+curl http://localhost:8080/health
+```
+
+Expected output from `agenticai status`:
+```
+┌──────────────┬────────────┬──────────────────────────┐
+│ Component    │ Status     │ Details                  │
+├──────────────┼────────────┼──────────────────────────┤
+│ Configuration│ Loaded     │ Twilio: +1XXXXXXXXXX    │
+│ Gemini       │ Configured │ Model: gemini-2.5-flash │
+│ Gateway      │ Configured │ URL: ws://127.0.0.1:18789│
+│ Server       │ Ready      │ http://0.0.0.0:8080     │
+└──────────────┴────────────┴──────────────────────────┘
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart Guide"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Make your first AI phone call
+  </Card>
+  <Card
+    title="Configuration Reference"
+    icon="gear"
+    href="/configuration"
+  >
+    Customize voice, prompts, and behavior
+  </Card>
+  <Card
+    title="CLI Reference"
+    icon="terminal"
+    href="/cli-reference"
+  >
+    Explore all available commands
+  </Card>
+  <Card
+    title="Troubleshooting"
+    icon="wrench"
+    href="/troubleshooting"
+  >
+    Common issues and solutions
+  </Card>
+</CardGroup>

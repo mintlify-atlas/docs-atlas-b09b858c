@@ -1,0 +1,287 @@
+---
+title: 'CallManager'
+description: 'Manages call lifecycle and active sessions'
+---
+
+The `CallManager` class orchestrates the complete lifecycle of voice calls, from initiation through media streaming to call termination.
+
+## Overview
+
+`CallManager` handles:
+- Call initiation via Twilio REST API
+- Incoming and outbound call management
+- Media stream handling and audio bridging
+- Real-time connection to Gemini Live API or OpenAI Realtime API
+- Gateway communication for external integrations
+- Session state tracking and cleanup
+
+## Constructor
+
+```python
+from agenticai.core import CallManager
+from agenticai.core.config import Config
+
+call_manager = CallManager(config)
+```
+
+<ParamField path="config" type="Config" required>
+  Application configuration object containing Twilio, Gemini/OpenAI, and Gateway settings.
+</ParamField>
+
+## Properties
+
+### active_sessions
+
+```python
+@property
+def active_sessions(self) -> dict[str, CallSession]
+```
+
+Returns a dictionary of currently active call sessions, keyed by call ID.
+
+<ResponseField name="active_sessions" type="dict[str, CallSession]">
+  Dictionary mapping call IDs to their corresponding `CallSession` objects.
+</ResponseField>
+
+## Methods
+
+### start
+
+```python
+async def start(self) -> None
+```
+
+Initializes the call manager and its dependencies (Twilio client, Telegram client, Gateway client).
+
+**Example:**
+```python
+await call_manager.start()
+```
+
+---
+
+### stop
+
+```python
+async def stop(self) -> None
+```
+
+Stops the call manager and cleans up all active sessions. Cancels gateway tasks and disconnects from all services.
+
+**Example:**
+```python
+await call_manager.stop()
+```
+
+---
+
+### initiate_call
+
+```python
+async def initiate_call(
+    self,
+    to_number: str,
+    prompt: str,
+    webhook_base_url: str,
+    metadata: dict | None = None,
+) -> str
+```
+
+Initiates an outbound call to a phone number.
+
+<ParamField path="to_number" type="str" required>
+  Phone number to call in E.164 format (e.g., `+1234567890`).
+</ParamField>
+
+<ParamField path="prompt" type="str" required>
+  System instruction/prompt for the AI agent during the call.
+</ParamField>
+
+<ParamField path="webhook_base_url" type="str" required>
+  Base URL for Twilio webhooks (e.g., `https://example.com`).
+</ParamField>
+
+<ParamField path="metadata" type="dict" default="None">
+  Optional metadata to attach to the call session.
+</ParamField>
+
+<ResponseField name="call_id" type="str">
+  Unique identifier for the initiated call.
+</ResponseField>
+
+**Example:**
+```python
+from agenticai.core import CallManager
+from agenticai.core.config import get_config
+import asyncio
+
+async def make_call():
+    config = get_config("config.yaml")
+    call_manager = CallManager(config)
+    await call_manager.start()
+    
+    try:
+        call_id = await call_manager.initiate_call(
+            to_number="+1234567890",
+            prompt="You are a helpful AI assistant.",
+            webhook_base_url="https://example.com",
+            metadata={"purpose": "customer_support"}
+        )
+        print(f"Call initiated: {call_id}")
+        
+        # Wait for call to complete
+        while call_id in call_manager.active_sessions:
+            await asyncio.sleep(1)
+    finally:
+        await call_manager.stop()
+
+asyncio.run(make_call())
+```
+
+---
+
+### register_incoming_call
+
+```python
+async def register_incoming_call(
+    self,
+    call_sid: str,
+    from_number: str,
+    to_number: str,
+) -> str
+```
+
+Registers an incoming call and creates a session. Called when someone calls your Twilio number.
+
+<ParamField path="call_sid" type="str" required>
+  Twilio call SID for the incoming call.
+</ParamField>
+
+<ParamField path="from_number" type="str" required>
+  Caller's phone number.
+</ParamField>
+
+<ParamField path="to_number" type="str" required>
+  Your Twilio number that was called.
+</ParamField>
+
+<ResponseField name="call_id" type="str">
+  Unique call ID for the new session.
+</ResponseField>
+
+**Example:**
+```python
+call_id = await call_manager.register_incoming_call(
+    call_sid="CA1234567890abcdef",
+    from_number="+1234567890",
+    to_number="+1987654321"
+)
+```
+
+---
+
+### handle_call_status
+
+```python
+async def handle_call_status(self, call_sid: str, status: str) -> None
+```
+
+Handles call status updates from Twilio. Automatically ends sessions for terminal states.
+
+<ParamField path="call_sid" type="str" required>
+  Twilio call SID.
+</ParamField>
+
+<ParamField path="status" type="str" required>
+  New call status (e.g., `completed`, `failed`, `busy`, `no-answer`, `canceled`).
+</ParamField>
+
+**Example:**
+```python
+await call_manager.handle_call_status(
+    call_sid="CA1234567890abcdef",
+    status="completed"
+)
+```
+
+---
+
+### handle_media_stream
+
+```python
+async def handle_media_stream(self, twilio_handler: TwilioMediaStreamHandler) -> None
+```
+
+Handles a new Twilio media stream connection. Creates an audio bridge and connects to the AI model (Gemini or OpenAI).
+
+<ParamField path="twilio_handler" type="TwilioMediaStreamHandler" required>
+  Twilio WebSocket handler for the media stream.
+</ParamField>
+
+**Example:**
+```python
+from agenticai.twilio.websocket import TwilioMediaStreamHandler
+
+twilio_handler = TwilioMediaStreamHandler(websocket)
+await call_manager.handle_media_stream(twilio_handler)
+```
+
+---
+
+### end_call
+
+```python
+async def end_call(self, call_id: str) -> None
+```
+
+Manually ends an active call.
+
+<ParamField path="call_id" type="str" required>
+  Call ID to terminate.
+</ParamField>
+
+**Example:**
+```python
+await call_manager.end_call("550e8400-e29b-41d4-a716-446655440000")
+```
+
+---
+
+### get_pending_call_info
+
+```python
+def get_pending_call_info(self, call_sid: str) -> dict | None
+```
+
+Retrieves pending call information by Twilio call SID.
+
+<ParamField path="call_sid" type="str" required>
+  Twilio call SID.
+</ParamField>
+
+<ResponseField name="call_info" type="dict | None">
+  Dictionary containing `call_id`, `prompt`, and `metadata`, or `None` if not found.
+</ResponseField>
+
+## CallSession Data Class
+
+The `CallSession` class represents an active call session:
+
+```python
+@dataclass
+class CallSession:
+    call_id: str                    # Unique call identifier
+    call_sid: str                   # Twilio call SID
+    to_number: str                  # Phone number being called
+    prompt: str                     # AI system prompt
+    metadata: dict                  # Additional metadata
+    start_time: datetime            # Call start timestamp
+    bridge: AudioBridge | None      # Audio bridge instance
+    status: str                     # Call status (initiating, ringing, in-progress, completed, etc.)
+```
+
+## Related Classes
+
+- [`AudioBridge`](/api/audio-bridge) - Handles bidirectional audio streaming
+- [`ConversationBrain`](/api/conversation-brain) - Manages conversation memory and intent detection
+- [`GatewayClient`](/api/gateway-client) - Communicates with OpenClaw Gateway

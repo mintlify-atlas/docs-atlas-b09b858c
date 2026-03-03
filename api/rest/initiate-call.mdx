@@ -1,0 +1,228 @@
+---
+title: 'Initiate Call'
+description: 'Start a new outbound call with a custom AI prompt'
+---
+
+## Endpoint
+
+```
+POST /api/call
+```
+
+Initiates an outbound call to a specified phone number with a custom AI prompt. This endpoint allows external tools (like ClawdBot or other integrations) to trigger calls programmatically.
+
+## Request Body
+
+<ParamField path="to" type="string" required>
+  The phone number to call in E.164 format (e.g., `+1234567890`).
+</ParamField>
+
+<ParamField path="prompt" type="string">
+  Custom system instruction for the AI agent. If not provided, uses the default prompt from `config.yaml` or a fallback prompt.
+  
+  **Default:** `"You are a helpful AI assistant making a phone call."`
+</ParamField>
+
+<ParamField path="webhook_url" type="string">
+  Base URL for webhook callbacks (e.g., `https://your-ngrok-url.ngrok.io`). If not provided, uses the `AGENTICAI_WEBHOOK_URL` or `NGROK_URL` environment variable.
+  
+  The server will append `/twilio/voice` and `/twilio/status` to this base URL for Twilio webhooks.
+</ParamField>
+
+<ParamField path="metadata" type="object">
+  Optional metadata object to store with the call session. Can include any custom fields for tracking or context.
+  
+  **Default:** `{}`
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates whether the call was successfully initiated.
+</ResponseField>
+
+<ResponseField name="call_id" type="string">
+  Unique identifier for the call. Use this ID with other API endpoints to manage the call.
+</ResponseField>
+
+<ResponseField name="to" type="string">
+  The phone number that was called (echoed from request).
+</ResponseField>
+
+<ResponseField name="webhook_url" type="string">
+  The webhook base URL used for this call.
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if `success` is `false`.
+</ResponseField>
+
+## Examples
+
+### Basic Call
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8080/api/call \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "+1234567890",
+    "webhook_url": "https://your-ngrok-url.ngrok.io"
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "http://localhost:8080/api/call",
+    json={
+        "to": "+1234567890",
+        "webhook_url": "https://your-ngrok-url.ngrok.io"
+    }
+)
+
+result = response.json()
+print(f"Call ID: {result['call_id']}")
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:8080/api/call', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    to: '+1234567890',
+    webhook_url: 'https://your-ngrok-url.ngrok.io'
+  })
+});
+
+const result = await response.json();
+console.log(`Call ID: ${result.call_id}`);
+```
+</CodeGroup>
+
+**Success Response:**
+
+```json
+{
+  "success": true,
+  "call_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "to": "+1234567890",
+  "webhook_url": "https://your-ngrok-url.ngrok.io"
+}
+```
+
+### Call with Custom Prompt
+
+```bash
+curl -X POST http://localhost:8080/api/call \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "+1234567890",
+    "prompt": "You are a friendly customer service agent for Acme Corp. Help the customer with their order inquiry and be polite.",
+    "webhook_url": "https://your-ngrok-url.ngrok.io"
+  }'
+```
+
+**Success Response:**
+
+```json
+{
+  "success": true,
+  "call_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+  "to": "+1234567890",
+  "webhook_url": "https://your-ngrok-url.ngrok.io"
+}
+```
+
+### Call with Metadata
+
+```bash
+curl -X POST http://localhost:8080/api/call \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "+1234567890",
+    "prompt": "You are calling to confirm an appointment.",
+    "webhook_url": "https://your-ngrok-url.ngrok.io",
+    "metadata": {
+      "customer_id": "12345",
+      "appointment_id": "apt-789",
+      "source": "crm_system"
+    }
+  }'
+```
+
+**Success Response:**
+
+```json
+{
+  "success": true,
+  "call_id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+  "to": "+1234567890",
+  "webhook_url": "https://your-ngrok-url.ngrok.io"
+}
+```
+
+## Error Responses
+
+### Missing Phone Number
+
+```json
+{
+  "success": false,
+  "error": "Missing 'to' phone number"
+}
+```
+
+### Missing Webhook URL
+
+```json
+{
+  "success": false,
+  "error": "Missing 'webhook_url'. Set AGENTICAI_WEBHOOK_URL environment variable or pass in request."
+}
+```
+
+### Twilio Error
+
+```json
+{
+  "success": false,
+  "error": "Unable to create record: The 'To' number +1234567890 is not a valid phone number."
+}
+```
+
+## Implementation Details
+
+The endpoint performs the following steps:
+
+1. Validates the `to` phone number is provided
+2. Resolves the `webhook_url` from request body or environment variables
+3. Uses the custom `prompt` or falls back to the default from config
+4. Generates a unique `call_id` (UUID v4)
+5. Creates a `CallSession` to track the call state
+6. Initiates the call via Twilio REST API
+7. Stores the session in the `CallManager`
+8. Returns the call details to the caller
+
+<Info>
+  The call is initiated asynchronously. The endpoint returns immediately after Twilio accepts the call request. Use the [List Calls](/api/rest/list-calls) endpoint to monitor the call status.
+</Info>
+
+## Source Code Reference
+
+Implementation: `src/agenticai/server/app.py:176-234`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="List Active Calls" icon="list" href="/api/rest/list-calls">
+    Monitor the call you just initiated
+  </Card>
+  
+  <Card title="End a Call" icon="phone-hangup" href="/api/rest/end-call">
+    Programmatically end the call
+  </Card>
+</CardGroup>

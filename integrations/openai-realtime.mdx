@@ -1,0 +1,536 @@
+---
+title: 'OpenAI Realtime API'
+description: 'Integrate OpenAI Realtime API for bidirectional voice conversations'
+icon: 'waveform'
+---
+
+## Overview
+
+The OpenAI Realtime API powers Agentic AI's voice conversations with:
+
+- **Low-latency audio streaming** - Bidirectional PCM audio via WebSocket
+- **Built-in Whisper STT** - Accurate speech transcription including proper nouns
+- **Natural TTS voices** - Six voice options for assistant responses
+- **Server-side VAD** - Automatic turn detection
+
+This integration replaces Gemini Live API for better transcription accuracy, especially with proper nouns like names and places.
+
+## Architecture
+
+```
+┌─────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   Twilio    │────▶│   Audio Bridge   │────▶│  OpenAI Realtime│
+│  (μ-law)    │     │  (PCM converter) │     │  (gpt-4o)       │
+└─────────────┘     └──────────────────┘     └─────────────────┘
+                           │                          │
+                           ▼                          ▼
+                    Conversation Brain        Whisper Transcripts
+                    (Intent Analysis)        (Accurate proper nouns)
+```
+
+### Audio Flow
+
+1. **User speaks** → Twilio captures audio
+2. **μ-law → PCM** → Audio bridge converts to PCM 24kHz
+3. **Send to OpenAI** → Streamed via WebSocket
+4. **Whisper transcription** → Accurate text with proper nouns
+5. **AI responds** → GPT-4o generates speech
+6. **Receive audio** → PCM 24kHz from OpenAI
+7. **PCM → μ-law** → Converted back for Twilio
+8. **User hears** → AI response on phone
+
+## Getting an API Key
+
+<Steps>
+  <Step title="Create OpenAI account">
+    Sign up at [platform.openai.com](https://platform.openai.com/)
+  </Step>
+
+  <Step title="Add payment method">
+    The Realtime API is not available on free tier:
+    
+    1. Go to **Settings** → **Billing**
+    2. Add a payment method
+    3. Set a usage limit (e.g., $10/month)
+  </Step>
+
+  <Step title="Generate API key">
+    Navigate to [platform.openai.com/api-keys](https://platform.openai.com/api-keys):
+    
+    1. Click **Create new secret key**
+    2. Name it (e.g., "Agentic AI")
+    3. Copy the key (starts with `sk-proj-...`)
+    4. Store securely - it won't be shown again
+  </Step>
+
+  <Step title="Check access">
+    Verify you have Realtime API access:
+    
+    ```bash
+    curl https://api.openai.com/v1/models/gpt-4o-realtime-preview-2024-12-17 \
+      -H "Authorization: Bearer YOUR_API_KEY"
+    ```
+    
+    Should return model details (not an error).
+  </Step>
+</Steps>
+
+## Configuration
+
+Add your OpenAI API key to `.env`:
+
+```bash .env
+# OpenAI Configuration
+OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Configure the Realtime API in `config.yaml`:
+
+```yaml config.yaml
+openai_realtime:
+  enabled: true
+  api_key: ${OPENAI_API_KEY}
+  model: "gpt-4o-realtime-preview-2024-12-17"
+  voice: "alloy"  # Options: alloy, echo, fable, onyx, nova, shimmer
+
+# Disable standalone Whisper (Realtime includes it)
+whisper:
+  enabled: false
+```
+
+## Voice Options
+
+The Realtime API offers six voice presets:
+
+| Voice | Description | Best For |
+|-------|-------------|----------|
+| **alloy** | Neutral, balanced tone | General purpose, professional |
+| **echo** | Warm, conversational | Friendly customer service |
+| **fable** | Expressive, storytelling | Engaging narratives |
+| **onyx** | Deep, authoritative | Formal announcements |
+| **nova** | Friendly, upbeat | Enthusiastic interactions |
+| **shimmer** | Soft, gentle | Calm, soothing conversations |
+
+### Changing Voice
+
+Update `config.yaml` and restart:
+
+```yaml config.yaml
+openai_realtime:
+  voice: "nova"  # Switch to friendly, upbeat voice
+```
+
+Or set dynamically in code:
+
+```python
+from agenticai.openai.realtime_handler import OpenAIRealtimeHandler
+
+handler = OpenAIRealtimeHandler(
+    api_key=api_key,
+    voice="echo",  # Warm, conversational
+    system_instruction="You are a helpful assistant."
+)
+```
+
+## System Instructions
+
+Customize the AI's behavior with system instructions:
+
+```yaml config.yaml
+openai_realtime:
+  system_instruction: |
+    You are a professional AI assistant making phone calls.
+    
+    Guidelines:
+    - Be concise and clear (phone conversations)
+    - Listen carefully before responding
+    - Ask clarifying questions when needed
+    - Summarize key points at the end
+    - Stay professional and friendly
+```
+
+## API Reference
+
+### OpenAIRealtimeHandler
+
+**Location**: `src/agenticai/openai/realtime_handler.py:17`
+
+```python
+class OpenAIRealtimeHandler:
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gpt-4o-realtime-preview-2024-12-17",
+        voice: str = "alloy",
+        system_instruction: str = "You are a helpful AI assistant.",
+    ):
+        """Initialize OpenAI Realtime handler."""
+
+    def set_callbacks(
+        self,
+        on_audio: Callable[[bytes], Awaitable[None]] | None = None,
+        on_transcript: Callable[[str, bool], Awaitable[None]] | None = None,
+        on_user_transcript: Callable[[str], Awaitable[None]] | None = None,
+        on_turn_complete: Callable[[], Awaitable[None]] | None = None,
+    ):
+        """Set event callbacks."""
+
+    async def connect(self, initial_prompt: str | None = None):
+        """Connect to OpenAI Realtime API."""
+
+    async def send_audio(self, audio_data: bytes):
+        """Send PCM 16-bit audio to OpenAI.
+        
+        Args:
+            audio_data: PCM 16-bit 24kHz audio bytes
+        """
+
+    async def send_text(self, text: str, end_of_turn: bool = True):
+        """Send text for OpenAI to respond to.
+        
+        Used to inject ClawdBot responses for the AI to speak.
+        """
+
+    async def get_audio(self) -> bytes:
+        """Get audio chunk from OpenAI.
+        
+        Returns:
+            PCM 16-bit 24kHz audio bytes
+        """
+
+    async def disconnect():
+        """Disconnect from OpenAI Realtime API."""
+```
+
+### Usage Example
+
+```python
+import asyncio
+from agenticai.openai.realtime_handler import OpenAIRealtimeHandler
+
+async def main():
+    handler = OpenAIRealtimeHandler(
+        api_key="sk-proj-xxx",
+        voice="alloy",
+    )
+
+    # Set callbacks
+    handler.set_callbacks(
+        on_audio=lambda audio: print(f"Received {len(audio)} bytes"),
+        on_user_transcript=lambda text: print(f"User: {text}"),
+        on_transcript=lambda text, is_final: print(f"AI: {text}"),
+    )
+
+    # Connect
+    await handler.connect(initial_prompt="Hello! How can I help you today?")
+
+    # Send audio chunks
+    while True:
+        audio_chunk = await get_audio_from_microphone()  # Your audio source
+        await handler.send_audio(audio_chunk)
+
+        # Receive AI audio
+        try:
+            ai_audio = await asyncio.wait_for(handler.get_audio(), timeout=0.1)
+            await play_audio(ai_audio)  # Your audio output
+        except asyncio.TimeoutError:
+            pass
+
+asyncio.run(main())
+```
+
+## Event Types
+
+The handler emits several event types:
+
+### Audio Events
+
+```python
+async def on_audio(audio_bytes: bytes):
+    """Called when AI generates audio.
+    
+    Args:
+        audio_bytes: PCM 16-bit 24kHz audio
+    """
+```
+
+### Transcript Events
+
+```python
+async def on_transcript(text: str, is_final: bool):
+    """Called when AI speaks (transcript of audio).
+    
+    Args:
+        text: Transcript text
+        is_final: True if complete, False if partial
+    """
+
+async def on_user_transcript(text: str):
+    """Called when user speech is transcribed (Whisper).
+    
+    Args:
+        text: Accurate transcription with proper nouns
+    """
+```
+
+### Turn Events
+
+```python
+async def on_turn_complete():
+    """Called when AI finishes speaking."""
+
+async def on_user_turn_complete():
+    """Called when user finishes speaking (VAD detected)."""
+```
+
+## Session Configuration
+
+The handler automatically configures sessions with optimal settings:
+
+**Location**: `src/agenticai/openai/realtime_handler.py:108`
+
+```python
+config = {
+    "type": "session.update",
+    "session": {
+        "modalities": ["text", "audio"],
+        "instructions": system_instruction,
+        "voice": voice,
+        "input_audio_format": "pcm16",      # 16-bit PCM
+        "output_audio_format": "pcm16",     # 16-bit PCM
+        "input_audio_transcription": {
+            "model": "whisper-1"              # Built-in Whisper
+        },
+        "turn_detection": {
+            "type": "server_vad",             # Server-side VAD
+            "threshold": 0.6,                 # Sensitivity
+            "prefix_padding_ms": 200,         # Pre-speech buffer
+            "silence_duration_ms": 300,       # End-of-speech timeout
+        },
+    }
+}
+```
+
+## VAD (Voice Activity Detection)
+
+Server-side VAD automatically detects when the user starts and stops speaking:
+
+### Configuration
+
+- **threshold**: `0.6` (higher = less sensitive)
+- **prefix_padding_ms**: `200` (captures 200ms before speech)
+- **silence_duration_ms**: `300` (300ms silence triggers turn end)
+
+### Events
+
+```
+User starts speaking  → input_audio_buffer.speech_started
+User stops speaking   → input_audio_buffer.speech_stopped
+Transcription ready   → conversation.item.input_audio_transcription.completed
+```
+
+## Whisper Transcription
+
+The Realtime API includes Whisper STT with superior accuracy:
+
+### Advantages
+
+- **Proper nouns** - Correctly transcribes names, places, brands
+- **Low latency** - Transcription arrives with audio chunks
+- **No extra cost** - Included in Realtime API pricing
+- **No setup** - Automatically enabled
+
+### Example Accuracy
+
+| User Says | Gemini Native | Whisper (Realtime) |
+|-----------|---------------|--------------------|
+| "Call John Smith" | "Call john smith" | "Call John Smith" |
+| "Open Spotify" | "Open spotify" | "Open Spotify" |
+| "Email to istiqlal@gmail.com" | "Email to is tickle all" | "Email to istiqlal@gmail.com" |
+
+### Implementation
+
+**Location**: `src/agenticai/openai/realtime_handler.py:228`
+
+```python
+elif event_type == "conversation.item.input_audio_transcription.completed":
+    # User transcript (Whisper)
+    transcript = event.get("transcript", "")
+    if transcript:
+        print(f"=== OPENAI USER TRANSCRIPT: {transcript} ===")
+        if self._on_user_transcript:
+            await self._on_user_transcript(transcript)
+```
+
+## Cost and Pricing
+
+### Realtime API Pricing
+
+- **Audio Input**: $0.06 / minute
+- **Audio Output**: $0.24 / minute
+- **Text Input**: $5.00 / 1M tokens
+- **Text Output**: $20.00 / 1M tokens
+
+### Example Costs
+
+| Call Duration | Input Cost | Output Cost | Total |
+|---------------|------------|-------------|-------|
+| 1 minute | $0.06 | $0.24 | **$0.30** |
+| 5 minutes | $0.30 | $1.20 | **$1.50** |
+| 10 minutes | $0.60 | $2.40 | **$3.00** |
+
+### Cost Optimization
+
+<Accordion title="Use shorter system instructions">
+  System instructions are sent with every request:
+  
+  ```yaml
+  # Bad (verbose)
+  system_instruction: |
+    You are a highly professional AI assistant who specializes in...
+    [500 words]
+  
+  # Good (concise)
+  system_instruction: |
+    Professional AI assistant. Be concise and helpful.
+  ```
+</Accordion>
+
+<Accordion title="Batch audio chunks">
+  The handler automatically batches up to 10 audio chunks per API call:
+  
+  **Location**: `src/agenticai/openai/realtime_handler.py:169`
+  
+  ```python
+  # Batch multiple chunks if available
+  audio_buffer = audio_data
+  batch_count = 1
+  while batch_count < 10:
+      try:
+          extra = self.audio_out_queue.get_nowait()
+          audio_buffer += extra
+          batch_count += 1
+      except asyncio.QueueEmpty:
+          break
+  ```
+</Accordion>
+
+<Accordion title="Monitor usage">
+  Check usage at [platform.openai.com/usage](https://platform.openai.com/usage)
+  
+  Set up billing alerts:
+  1. Go to **Settings** → **Billing** → **Limits**
+  2. Set soft limit (e.g., $10)
+  3. Set hard limit (e.g., $20)
+</Accordion>
+
+## Troubleshooting
+
+### Connection fails
+
+<Accordion title="Check API key">
+  ```bash
+  # Verify key format
+  echo $OPENAI_API_KEY  # Should start with sk-proj-
+  
+  # Test authentication
+  curl https://api.openai.com/v1/models \
+    -H "Authorization: Bearer $OPENAI_API_KEY"
+  ```
+</Accordion>
+
+<Accordion title="Verify Realtime access">
+  Free tier does not include Realtime API. Check:
+  
+  1. Go to **Settings** → **Billing**
+  2. Verify payment method is added
+  3. Check usage limits are set
+</Accordion>
+
+### No audio from AI
+
+<Accordion title="Check WebSocket connection">
+  ```bash
+  agenticai service logs -f | grep "OPENAI"
+  ```
+  
+  Should see:
+  ```
+  === OPENAI: Connected to Realtime API ===
+  === OPENAI: First audio chunk received! ===
+  ```
+</Accordion>
+
+<Accordion title="Verify audio format">
+  OpenAI expects PCM 16-bit. Check conversion:
+  
+  **Location**: `src/agenticai/audio/converter.py:1`
+  
+  ```python
+  # Twilio μ-law → PCM for OpenAI
+  pcm_audio = convert_mulaw_to_pcm(mulaw_audio)
+  await openai_handler.send_audio(pcm_audio)
+  ```
+</Accordion>
+
+### Transcription inaccurate
+
+<Accordion title="Use Whisper transcripts">
+  Ensure you're using Whisper transcripts, not Gemini:
+  
+  ```python
+  handler.set_callbacks(
+      on_user_transcript=handle_whisper_transcript,  # Accurate
+  )
+  ```
+  
+  Check logs:
+  ```
+  === OPENAI USER TRANSCRIPT: ... ===  # Good (Whisper)
+  === GEMINI USER TRANSCRIPT: ... ===  # Less accurate
+  ```
+</Accordion>
+
+### High latency
+
+<Accordion title="Check audio batching">
+  The handler batches chunks for efficiency. Monitor logs:
+  
+  ```bash
+  agenticai service logs -f | grep "Sent.*audio chunks"
+  ```
+  
+  Should see batching:
+  ```
+  === OPENAI: Sent 100 audio chunks ===
+  ```
+</Accordion>
+
+<Accordion title="Adjust VAD timing">
+  Reduce silence detection for faster responses:
+  
+  **Location**: `src/agenticai/openai/realtime_handler.py:122`
+  
+  ```python
+  "turn_detection": {
+      "silence_duration_ms": 200,  # Faster (was 300)
+  }
+  ```
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Conversation Brain" icon="brain" href="/concepts/conversation-brain">
+    Understand intent analysis
+  </Card>
+  <Card title="Gemini Integration" icon="sparkles" href="/integrations/gemini">
+    Alternative AI for intent detection
+  </Card>
+  <Card title="Audio Pipeline" icon="chart-line" href="/concepts/audio-pipeline">
+    Learn audio processing flow
+  </Card>
+  <Card title="Voice Options" icon="microphone-lines" href="/configuration/voice-options">
+    Explore all voice configurations
+  </Card>
+</CardGroup>

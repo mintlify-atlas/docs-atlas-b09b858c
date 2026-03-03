@@ -1,0 +1,99 @@
+---
+title: 'REST API Overview'
+description: 'Manage calls programmatically with Agentic AI REST API'
+---
+
+## Introduction
+
+The Agentic AI REST API allows you to programmatically initiate calls, list active calls, and end calls. This API is ideal for integrating voice AI capabilities into your own applications or workflows.
+
+## Base URL
+
+All API endpoints are relative to your server's base URL:
+
+```
+http://localhost:8080/api
+```
+
+Or in production with ngrok:
+
+```
+https://your-ngrok-url.ngrok.io/api
+```
+
+## Authentication
+
+The current version of the REST API does not require authentication. If you're deploying to production, consider implementing authentication middleware or using a reverse proxy with authentication.
+
+<Warning>
+  For production deployments, always implement proper authentication and authorization to prevent unauthorized access to your API endpoints.
+</Warning>
+
+## Available Endpoints
+
+<CardGroup cols={2}>
+  <Card title="Initiate Call" icon="phone-arrow-up-right" href="/api/rest/initiate-call">
+    Start a new outbound call with a custom prompt
+  </Card>
+  
+  <Card title="List Calls" icon="list" href="/api/rest/list-calls">
+    Get all currently active calls
+  </Card>
+  
+  <Card title="End Call" icon="phone-hangup" href="/api/rest/end-call">
+    Terminate an active call
+  </Card>
+  
+  <Card title="Health Check" icon="heart-pulse" href="#health-check">
+    Check server health and active call count
+  </Card>
+</CardGroup>
+
+## Health Check
+
+Before using the API, you can verify the server is running:
+
+```bash
+curl http://localhost:8080/health
+```
+
+**Response:**
+
+```json
+{
+  "status": "healthy",
+  "active_calls": 2
+}
+```
+
+## Error Handling
+
+All endpoints return JSON responses. Successful operations typically include a `success: true` field, while errors include `success: false` with an `error` field describing the issue.
+
+**Error Response Example:**
+
+```json
+{
+  "success": false,
+  "error": "Missing 'to' phone number"
+}
+```
+
+## Rate Limits
+
+There are currently no enforced rate limits, but be mindful of:
+- Twilio API rate limits
+- Gemini API rate limits
+- Your server's capacity to handle concurrent calls
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Initiate Your First Call" icon="rocket" href="/api/rest/initiate-call">
+    Learn how to start a call with the POST /api/call endpoint
+  </Card>
+  
+  <Card title="Monitor Active Calls" icon="gauge" href="/api/rest/list-calls">
+    Track all calls in progress
+  </Card>
+</CardGroup>

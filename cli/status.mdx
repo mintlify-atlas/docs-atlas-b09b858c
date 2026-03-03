@@ -1,0 +1,404 @@
+---
+title: agenticai status
+description: Show system status and test service connections
+---
+
+Check the status of Agentic AI components and test connections to external services (Twilio, Gemini, OpenClaw Gateway).
+
+## Commands
+
+### agenticai status
+
+Display system configuration and status.
+
+```bash
+agenticai status
+```
+
+**Example Output:**
+```
+┌──────────────────────────────────────────────────────────┐
+│                    Agentic AI Status                     │
+├─────────────────┬────────────┬───────────────────────────┤
+│ Component       │ Status     │ Details                   │
+├─────────────────┼────────────┼───────────────────────────┤
+│ Configuration   │ Loaded     │ Twilio: +18001234567      │
+│ Gemini          │ Configured │ Model: gemini-2.5-flash...│
+│ Gateway         │ Configured │ URL: ws://127.0.0.1:18789 │
+│ Server          │ Ready      │ http://0.0.0.0:8080       │
+│ Schedules       │ 2 enabled  │ 5 total schedules         │
+└─────────────────┴────────────┴───────────────────────────┘
+```
+
+This command:
+- ✅ Verifies configuration is loaded
+- ✅ Shows Twilio phone number
+- ✅ Displays Gemini model
+- ✅ Shows Gateway URL
+- ✅ Displays server address
+- ✅ Counts enabled schedules
+
+<Note>
+  `status` only checks configuration, not live connections. Use `test-connection` to verify connectivity.
+</Note>
+
+### agenticai test-connection
+
+Test live connections to all services.
+
+```bash
+agenticai test-connection
+```
+
+**Example Output (all passing):**
+```
+┌─────────────────────────────┐
+│ 🔍 Testing Connections      │
+└─────────────────────────────┘
+
+Testing Twilio...
+  ✓ Twilio OK
+Testing Gateway...
+  ✓ Gateway OK
+Checking Gemini config...
+  ✓ Gemini configured
+
+┌──────────────────────────────────────────────────────────┐
+│               Connection Test Results                    │
+├─────────┬──────────────┬──────────────────────────────────┤
+│ Service │ Status       │ Details                          │
+├─────────┼──────────────┼──────────────────────────────────┤
+│ Twilio  │ ✓ Connected  │ Account: My Account              │
+│ Gateway │ ✓ Connected  │ ws://127.0.0.1:18789             │
+│ Gemini  │ ✓ Configured │ Model: gemini-2.5-flash...       │
+└─────────┴──────────────┴──────────────────────────────────┘
+```
+
+**Example Output (with failures):**
+```
+Testing Twilio...
+  ✗ Twilio Failed: Unable to create record: Authenticate
+Testing Gateway...
+  ⚠ Gateway connecting...
+Checking Gemini config...
+  ✓ Gemini configured
+
+┌──────────────────────────────────────────────────────────┐
+│               Connection Test Results                    │
+├─────────┬──────────────┬──────────────────────────────────┤
+│ Service │ Status       │ Details                          │
+├─────────┼──────────────┼──────────────────────────────────┤
+│ Twilio  │ ✗ Failed     │ Unable to create record: Authen...│
+│ Gateway │ ⚠ Pending    │ Connection in progress           │
+│ Gemini  │ ✓ Configured │ Model: gemini-2.5-flash...       │
+└─────────┴──────────────┴──────────────────────────────────┘
+```
+
+## What Gets Tested
+
+### Twilio
+
+Tests Twilio API connectivity:
+
+```python
+# Fetches account details
+client = TwilioClient(account_sid, auth_token)
+account = client.api.accounts(account_sid).fetch()
+```
+
+**Success criteria:**
+- Valid credentials
+- Account is active
+- API is reachable
+
+**Common failures:**
+- Invalid `TWILIO_ACCOUNT_SID` or `TWILIO_AUTH_TOKEN`
+- Network connectivity issues
+- Twilio API outage
+
+### Gateway (OpenClaw)
+
+Tests WebSocket connection to OpenClaw Gateway:
+
+```python
+# Attempts WebSocket connection
+gateway = GatewayClient(url=gateway_url)
+await gateway.connect()
+```
+
+**Success criteria:**
+- Gateway is running
+- WebSocket connection established
+
+**Common failures:**
+- Gateway not running (start with `clawdbot gateway`)
+- Wrong URL or port
+- Firewall blocking port 18789
+
+### Gemini
+
+Checks API key configuration:
+
+```python
+# Validates API key format
+if len(api_key) > 10:
+    status = "Configured"
+```
+
+<Warning>
+  `test-connection` only checks if the API key is set, not if it's valid. Actual Gemini validation happens during calls.
+</Warning>
+
+**Success criteria:**
+- `GEMINI_API_KEY` is set in `.env`
+- Key is non-empty
+
+**Common failures:**
+- Missing `GEMINI_API_KEY`
+- Empty or invalid format
+
+## Examples
+
+### Quick Health Check
+
+Before making calls:
+
+```bash
+agenticai test-connection
+```
+
+If all services show `✓ Connected` or `✓ Configured`, you're ready to make calls.
+
+### Debugging Setup Issues
+
+If calls aren't working:
+
+```bash
+# 1. Check configuration
+agenticai status
+
+# 2. Test connections
+agenticai test-connection
+
+# 3. Fix any failures, then re-test
+agenticai test-connection
+```
+
+### Scheduled Health Checks
+
+Run periodically to monitor service health:
+
+```bash
+# In cron (every hour)
+0 * * * * /path/to/venv/bin/agenticai test-connection >> /var/log/agenticai-health.log 2>&1
+```
+
+### CI/CD Integration
+
+Validate configuration in CI:
+
+```yaml
+# GitHub Actions
+- name: Test Agentic AI connections
+  run: |
+    source venv/bin/activate
+    agenticai test-connection
+  env:
+    TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+    TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+    GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+```
+
+## Interpreting Results
+
+### All Green (✓)
+
+```
+│ Twilio  │ ✓ Connected  │ Account: My Account              │
+│ Gateway │ ✓ Connected  │ ws://127.0.0.1:18789             │
+│ Gemini  │ ✓ Configured │ Model: gemini-2.5-flash...       │
+```
+
+**Action:** System is ready. You can make calls.
+
+### Gateway Pending (⚠)
+
+```
+│ Gateway │ ⚠ Pending    │ Connection in progress           │
+```
+
+**Meaning:** Gateway connection is still being established (may take a few seconds).
+
+**Action:** Run `test-connection` again after a few seconds.
+
+### Twilio Failed (✗)
+
+```
+│ Twilio  │ ✗ Failed     │ Unable to create record: Authen...│
+```
+
+**Possible causes:**
+- Invalid credentials
+- Network issue
+- Twilio API down
+
+**Action:**
+1. Verify credentials in `.env`:
+   ```bash
+   cat .env | grep TWILIO
+   ```
+2. Test credentials manually:
+   ```bash
+   curl -X GET 'https://api.twilio.com/2010-04-01/Accounts' \
+     -u "$TWILIO_ACCOUNT_SID:$TWILIO_AUTH_TOKEN"
+   ```
+
+### Gateway Failed (✗)
+
+```
+│ Gateway │ ✗ Failed     │ Cannot connect to host 127.0.0.1...│
+```
+
+**Possible causes:**
+- Gateway not running
+- Wrong URL/port
+- Firewall blocking connection
+
+**Action:**
+1. Start the gateway:
+   ```bash
+   clawdbot gateway
+   ```
+2. Verify it's listening:
+   ```bash
+   lsof -i :18789
+   ```
+3. Re-test:
+   ```bash
+   agenticai test-connection
+   ```
+
+### Gemini Missing (✗)
+
+```
+│ Gemini  │ ✗ Missing    │ API key not set                  │
+```
+
+**Action:**
+1. Add to `.env`:
+   ```env
+   GEMINI_API_KEY=your_api_key_here
+   ```
+2. Re-test:
+   ```bash
+   agenticai test-connection
+   ```
+
+## Configuration Files
+
+Both commands load from:
+
+- **Primary config:** `config.yaml` (or path from `--config`)
+- **Environment:** `.env` file
+
+### Example .env
+
+```env
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=your_auth_token_here
+TWILIO_PHONE_NUMBER=+18001234567
+
+GEMINI_API_KEY=your_gemini_api_key_here
+
+GATEWAY_URL=ws://127.0.0.1:18789
+```
+
+### Example config.yaml
+
+```yaml
+twilio:
+  account_sid: ${TWILIO_ACCOUNT_SID}
+  auth_token: ${TWILIO_AUTH_TOKEN}
+  from_number: ${TWILIO_PHONE_NUMBER}
+
+gemini:
+  api_key: ${GEMINI_API_KEY}
+  model: "models/gemini-2.5-flash-native-audio-latest"
+
+gateway:
+  url: "ws://127.0.0.1:18789"
+  reconnect_max_attempts: 5
+  reconnect_base_delay: 1.0
+  reconnect_max_delay: 60.0
+```
+
+## Troubleshooting
+
+### Configuration Not Found
+
+**Error:** `Configuration file not found. Create config.yaml first.`
+
+**Solution:**
+```bash
+# Run setup wizard
+agenticai setup
+
+# Or copy example
+cp config.example.yaml config.yaml
+```
+
+### All Tests Fail
+
+**Possible cause:** Missing `.env` file
+
+**Solution:**
+```bash
+# Check if .env exists
+ls -la .env
+
+# Create from example
+cp .env.example .env
+
+# Edit with your credentials
+nano .env
+```
+
+### Tests Pass but Calls Fail
+
+**Possible causes:**
+- Server not running
+- Webhook URL incorrect
+- Twilio number not configured
+
+**Action:**
+```bash
+# Start server
+agenticai server
+
+# In another terminal, test
+agenticai trigger --to +15551234567 --webhook-url https://your-url.ngrok.io
+```
+
+## See Also
+
+- [Server Command](/cli/server) - Start the webhook server
+- [Setup Command](/cli/status#setup-wizard) - Interactive configuration
+- [Service Status](/cli/service#agenticai-service-status) - Service-specific status
+- [Bot Command](/cli/bot) - Interactive Gateway terminal
+
+## Setup Wizard
+
+For first-time setup, use the interactive wizard:
+
+```bash
+agenticai setup
+```
+
+This guides you through:
+1. Twilio configuration
+2. Gemini API key
+3. Gateway settings
+4. Server configuration
+5. ngrok URL (optional)
+
+See the [CLI Overview](/cli/overview#first-time-setup) for details.

@@ -1,80 +1,315 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Make your first AI phone call in under 10 minutes
 ---
 
-## Get started in three steps
+This guide will get you from zero to making your first AI-powered phone call. Follow these steps carefully and you'll have a working voice agent in minutes.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before starting, make sure you have:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+- Python 3.11 or higher installed
+- A terminal/command line interface
+- 10 minutes of your time
 
-### Step 2: Deploy your changes
+<Steps>
+  <Step title="Install Agentic AI">
+    Clone the repository and install the package:
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```bash
+    git clone https://github.com/IstiqlalBhat/aiagent.git
+    cd aiagent
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    # Create virtual environment
+    python -m venv venv
+    source venv/bin/activate  # Mac/Linux
+    # venv\Scripts\activate   # Windows
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    # Install the package
+    pip install -e .
+    ```
 
-### Step 3: Go live
+    Verify the installation:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    ```bash
+    agenticai --help
+    ```
 
-## Next steps
+    You should see the CLI help menu with available commands.
+  </Step>
 
-Now that you have your docs running, explore these key features:
+  <Step title="Get Your API Keys">
+    You'll need credentials from these services:
+
+    ### Twilio (Required)
+    1. Sign up at [console.twilio.com](https://console.twilio.com/)
+    2. Get a phone number from the Twilio console
+    3. Copy your **Account SID** and **Auth Token** from the dashboard
+
+    ### OpenAI (Required)
+    1. Create an API key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+    2. Make sure your account has access to the Realtime API
+    3. Copy your **API Key** (starts with `sk-proj-`)
+
+    ### Gemini (Required)
+    1. Get an API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+    2. Copy your **Gemini API Key**
+
+    ### Telegram (Optional)
+    1. Message [@BotFather](https://t.me/BotFather) on Telegram
+    2. Create a new bot with `/newbot` and copy the **Bot Token**
+    3. Message your bot (say "hi")
+    4. Visit `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`
+    5. Find `"chat":{"id":123456789}` - that's your **Chat ID**
+
+    <Tip>
+      Keep these credentials handy - you'll need them in the next step.
+    </Tip>
+  </Step>
+
+  <Step title="Configure Environment">
+    Run the interactive setup wizard:
+
+    ```bash
+    agenticai setup
+    ```
+
+    The wizard will guide you through entering all your credentials and create a `.env` file automatically.
+
+    **Or configure manually:**
+
+    ```bash
+    # Copy the example file
+    cp .env.example .env
+
+    # Edit with your credentials
+    nano .env  # or use any text editor
+    ```
+
+    Fill in your `.env` file:
+
+    ```bash .env
+    # Twilio credentials
+    TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    TWILIO_AUTH_TOKEN=your_auth_token_here
+    TWILIO_PHONE_NUMBER=+1XXXXXXXXXX
+
+    # OpenAI API key for Realtime API
+    OPENAI_API_KEY=sk-proj-your_openai_api_key_here
+
+    # Gemini for intent analysis
+    GEMINI_API_KEY=your_gemini_api_key_here
+
+    # Optional: Telegram integration
+    TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+    TELEGRAM_CHAT_ID=your_telegram_chat_id_here
+    ```
+
+    <Warning>
+      Never commit your `.env` file to version control! It's already in `.gitignore`.
+    </Warning>
+  </Step>
+
+  <Step title="Test Your Configuration">
+    Verify all your credentials are working:
+
+    ```bash
+    agenticai test-connection
+    ```
+
+    This will test connections to:
+    - Twilio API
+    - Gemini configuration
+    - OpenClaw Gateway (optional)
+
+    You should see green checkmarks for all required services.
+  </Step>
+
+  <Step title="Start a Tunnel">
+    Twilio needs to reach your local server via a public URL. Start ngrok:
+
+    ```bash
+    # Install ngrok if you don't have it
+    brew install ngrok  # macOS
+    # Or download from https://ngrok.com/download
+
+    # Start the tunnel
+    agenticai tunnel start
+    # Or directly: ngrok http 8080
+    ```
+
+    Copy the public URL that appears (e.g., `https://xxxx-xx-xx-xxx-xxx.ngrok-free.app`).
+
+    <Tip>
+      **Alternative:** Use Cloudflare tunnel (free, no signup required):
+      ```bash
+      agenticai tunnel start --provider cloudflare
+      ```
+    </Tip>
+
+    Set the webhook URL in your environment:
+
+    ```bash
+    export NGROK_URL=https://xxxx-xx-xx-xxx-xxx.ngrok-free.app
+    ```
+  </Step>
+
+  <Step title="Start the Server">
+    In a **new terminal window** (keep ngrok running), start the Agentic AI server:
+
+    ```bash
+    # Activate your virtual environment first
+    source venv/bin/activate
+
+    # Start the server
+    agenticai server
+    ```
+
+    You should see output like:
+
+    ```
+    Starting server on 0.0.0.0:8080
+    Webhook path: /twilio/voice
+    WebSocket path: /twilio/media-stream
+    INFO:     Uvicorn running on http://0.0.0.0:8080
+    ```
+
+    <Note>
+      The server must stay running while making calls. Keep this terminal window open.
+    </Note>
+  </Step>
+
+  <Step title="Make Your First Call">
+    In a **third terminal window**, trigger your first AI call:
+
+    ```bash
+    agenticai trigger --to +1YOURNUMBER --webhook-url https://xxxx.ngrok.io
+    ```
+
+    Replace:
+    - `+1YOURNUMBER` with your actual phone number (E.164 format)
+    - `https://xxxx.ngrok.io` with your ngrok URL from Step 5
+
+    <CodeGroup>
+    ```bash Example: Basic Call
+    agenticai trigger --to +15551234567 --webhook-url https://abc123.ngrok.io
+    ```
+
+    ```bash Example: Custom Prompt
+    agenticai trigger --to +15551234567 \
+      --prompt "You are calling to confirm a dentist appointment" \
+      --webhook-url https://abc123.ngrok.io
+    ```
+    </CodeGroup>
+
+    **Your phone will ring!** 🎉
+
+    Answer it and have a conversation with your AI agent. Try saying:
+    - "Hello, who is this?"
+    - "What can you help me with?"
+    - "Play Zayn Dusk Till Dawn on YouTube" (requires ClawdBot setup)
+  </Step>
+
+  <Step title="Receive Incoming Calls (Optional)">
+    Configure your Twilio number to answer incoming calls automatically:
+
+    1. Go to [Twilio Console](https://console.twilio.com/)
+    2. Navigate to **Phone Numbers** → **Manage** → **Active numbers**
+    3. Click on your phone number
+    4. Scroll to **Voice & Fax** section
+    5. Under "A call comes in", select **Webhook**
+    6. Enter: `https://xxxx.ngrok.io/twilio/voice` (your ngrok URL + `/twilio/voice`)
+    7. Set method to **HTTP POST**
+    8. Click **Save**
+
+    Now when anyone calls your Twilio number, the AI will answer!
+
+    <Warning>
+      If you're using ngrok free tier, your URL changes each time you restart. You'll need to update the Twilio webhook URL when this happens.
+    </Warning>
+  </Step>
+</Steps>
+
+## What's Next?
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card
+    title="Installation Guide"
+    icon="download"
+    href="/installation"
+  >
+    Deep dive into installation options, service setup, and production deployment
+  </Card>
+  <Card
+    title="ClawdBot Integration"
+    icon="robot"
+    href="/features/clawdbot-integration"
+  >
+    Enable command execution during calls - play music, send messages, and more
+  </Card>
+  <Card
+    title="Configuration Reference"
+    icon="gear"
+    href="/configuration"
+  >
+    Customize voice options, system instructions, and advanced settings
+  </Card>
+  <Card
+    title="API Reference"
+    icon="code"
+    href="/api-reference"
+  >
+    Explore all CLI commands and programmatic API usage
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Call not connecting">
+    **Symptoms:** Phone doesn't ring or call immediately disconnects
+
+    **Solutions:**
+    - Verify your Twilio credentials in `.env` are correct
+    - Check that your ngrok tunnel is running: `curl https://xxxx.ngrok.io/health`
+    - Ensure the webhook URL matches your ngrok URL exactly
+    - Check that your Twilio number has voice capabilities enabled
+    - View server logs for errors: `agenticai service logs -f`
+  </Accordion>
+
+  <Accordion title="No audio / AI not speaking">
+    **Symptoms:** Call connects but you hear silence, or AI doesn't respond
+
+    **Solutions:**
+    - Verify `OPENAI_API_KEY` is set correctly and has Realtime API access
+    - Check the OpenAI model name is correct: `gpt-4o-realtime-preview-2024-12-17`
+    - Look for WebSocket errors in server logs
+    - Ensure your OpenAI account has sufficient credits
+    - Try a different voice option in `config.yaml`
+  </Accordion>
+
+  <Accordion title="Server won't start">
+    **Symptoms:** Error when running `agenticai server`
+
+    **Solutions:**
+    - Check port 8080 is not already in use: `lsof -i :8080`
+    - Verify all required environment variables are set: `agenticai status`
+    - Ensure Python version is 3.11 or higher: `python --version`
+    - Reinstall dependencies: `pip install -e .`
+  </Accordion>
+
+  <Accordion title="ClawdBot not responding">
+    **Symptoms:** AI doesn't execute commands during calls
+
+    **Solutions:**
+    - Ensure OpenClaw Gateway is running on port 18789
+    - Start ClawdBot agent: `clawdbot agent --session-id agent:main:main`
+    - Verify gateway URL in `config.yaml`: `ws://127.0.0.1:18789`
+    - Check that the skill you're using is configured in ClawdBot
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+  Still having issues? Check the full logs with `agenticai service logs -f` or visit our GitHub issues.
+</Tip>

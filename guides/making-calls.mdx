@@ -1,0 +1,384 @@
+---
+title: Making Outbound Calls
+description: Learn how to initiate outbound phone calls using Agentic AI
+---
+
+Learn how to initiate outbound phone calls with Agentic AI's CLI and API.
+
+## Prerequisites
+
+Before making calls, ensure you have:
+
+- Configured your Twilio credentials in `.env`
+- Set up a public webhook URL (ngrok or Cloudflare tunnel)
+- Started the Agentic AI server
+
+## Quick Start
+
+The fastest way to make a call is using the `trigger` command:
+
+```bash
+agenticai trigger --to +15551234567 --webhook-url https://your-url.ngrok.io
+```
+
+<Note>
+The server must be running before triggering a call. Start it with `agenticai server`.
+</Note>
+
+## Making Calls via CLI
+
+### Using the `call` Command
+
+The `call` command initiates an outbound call and waits for it to complete:
+
+```bash
+agenticai call \
+  --to +15551234567 \
+  --prompt "Ask the user about their appointment" \
+  --webhook-url https://your-url.ngrok.io
+```
+
+**Options:**
+
+- `--to`, `-t` (required): Phone number in E.164 format (e.g., +15551234567)
+- `--prompt`, `-p` (required): Instructions for the AI agent
+- `--webhook-url`, `-w` (required): Public webhook base URL
+- `--config`, `-c` (optional): Path to custom config.yaml
+
+**Example output:**
+
+```
+Initiating call to +15551234567
+Prompt: Ask the user about their appointment...
+Call initiated! Call ID: CA1234567890abcdef
+Waiting for call to complete... (Ctrl+C to exit)
+Call completed.
+```
+
+### Using the `trigger` Command
+
+The `trigger` command is a simplified version that uses the running server's API:
+
+```bash
+agenticai trigger \
+  --to +15551234567 \
+  --prompt "Custom instructions" \
+  --webhook-url https://your-url.ngrok.io
+```
+
+**Options:**
+
+- `--to`, `-t` (required): Phone number to call
+- `--prompt`, `-p` (optional): Custom prompt (uses default from config if not set)
+- `--webhook-url`, `-w` (optional): Webhook URL (uses `NGROK_URL` env var if not set)
+- `--server-url`, `-s` (optional): Server URL (default: http://localhost:8080)
+
+<Steps>
+
+### Step 1: Set Environment Variable
+
+Set the webhook URL once to avoid repeating it:
+
+```bash
+export NGROK_URL=https://your-subdomain.ngrok.io
+```
+
+### Step 2: Trigger the Call
+
+```bash
+agenticai trigger --to +15551234567
+```
+
+### Step 3: Monitor Progress
+
+The CLI will show:
+
+```
+┌─────────────────────────────────────────┐
+│ 📞 Triggering Call                      │
+│                                         │
+│ To: +15551234567                        │
+│ From: +15559876543                      │
+│ Webhook: https://xxxx.ngrok.io          │
+└─────────────────────────────────────────┘
+
+✓ Call initiated!
+  Call ID: CA1234567890abcdef
+
+The call is in progress. Check server logs for details.
+```
+
+</Steps>
+
+## Making Calls via API
+
+You can initiate calls programmatically using the REST API.
+
+### API Endpoint
+
+**POST** `/api/call`
+
+**Request Body:**
+
+```json
+{
+  "to": "+15551234567",
+  "prompt": "Custom instructions for the AI",
+  "webhook_url": "https://your-url.ngrok.io",
+  "metadata": {
+    "purpose": "appointment_reminder",
+    "priority": "high"
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "call_id": "CA1234567890abcdef",
+  "to": "+15551234567",
+  "webhook_url": "https://your-url.ngrok.io"
+}
+```
+
+### cURL Example
+
+```bash
+curl -X POST http://localhost:8080/api/call \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "+15551234567",
+    "prompt": "Ask about their feedback on our service",
+    "webhook_url": "https://xxxx.ngrok.io"
+  }'
+```
+
+### Python Example
+
+```python
+import requests
+
+response = requests.post(
+    "http://localhost:8080/api/call",
+    json={
+        "to": "+15551234567",
+        "prompt": "Remind them about tomorrow's appointment",
+        "webhook_url": "https://xxxx.ngrok.io",
+        "metadata": {
+            "purpose": "reminder",
+            "customer_id": "12345"
+        }
+    }
+)
+
+data = response.json()
+if data["success"]:
+    print(f"Call initiated: {data['call_id']}")
+else:
+    print(f"Error: {data['error']}")
+```
+
+## Call Lifecycle
+
+Understanding the call flow:
+
+<Steps>
+
+### Step 1: Call Initiated
+
+The CLI or API sends a request to Twilio with:
+- Target phone number
+- AI prompt/instructions
+- Webhook URL for callbacks
+
+### Step 2: Twilio Connects
+
+Twilio initiates the call and requests TwiML instructions from your webhook.
+
+Reference: `src/agenticai/server/app.py:86` (twilio_voice_webhook)
+
+### Step 3: Media Stream Opens
+
+A WebSocket connection is established for bidirectional audio streaming.
+
+Reference: `src/agenticai/server/app.py:267` (twilio_media_stream)
+
+### Step 4: AI Conversation
+
+OpenAI Realtime API handles the conversation with accurate transcription via Whisper STT.
+
+### Step 5: Call Ends
+
+When the call completes, Twilio sends a status callback and the session is cleaned up.
+
+Reference: `src/agenticai/server/app.py:162` (twilio_status_callback)
+
+</Steps>
+
+## Customizing Call Behavior
+
+### Custom Prompts
+
+The prompt defines the AI's personality and objectives:
+
+```bash
+agenticai trigger \
+  --to +15551234567 \
+  --prompt "You are a friendly appointment reminder bot. \
+Ask if they can confirm their appointment for tomorrow at 3 PM. \
+If they need to reschedule, offer alternative times."
+```
+
+### Using Metadata
+
+Add metadata to track calls in your system:
+
+```bash
+curl -X POST http://localhost:8080/api/call \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "+15551234567",
+    "prompt": "Survey call",
+    "webhook_url": "https://xxxx.ngrok.io",
+    "metadata": {
+      "campaign_id": "spring-2024",
+      "customer_segment": "premium",
+      "follow_up_required": true
+    }
+  }'
+```
+
+## Monitoring Active Calls
+
+### List Active Calls
+
+```bash
+curl http://localhost:8080/api/calls
+```
+
+**Response:**
+
+```json
+{
+  "calls": [
+    {
+      "call_id": "CA1234567890abcdef",
+      "to_number": "+15551234567",
+      "status": "in-progress",
+      "direction": "outbound"
+    }
+  ],
+  "count": 1
+}
+```
+
+### Check Server Status
+
+```bash
+agenticai status
+```
+
+**Output:**
+
+```
+┌─────────────────────────────────────────┐
+│           Agentic AI Status             │
+├─────────────┬─────────────┬─────────────┤
+│ Component   │ Status      │ Details     │
+├─────────────┼─────────────┼─────────────┤
+│ Twilio      │ Configured  │ +15559876543│
+│ Gemini      │ Configured  │ gemini-2.5-*│
+│ Gateway     │ Configured  │ ws://127.*  │
+│ Server      │ Ready       │ http://0.0.*│
+│ Schedules   │ 2 enabled   │ 5 total     │
+└─────────────┴─────────────┴─────────────┘
+```
+
+## Troubleshooting
+
+<Accordion title="Call not connecting">
+
+**Symptoms:** Call initiated but never connects
+
+**Solutions:**
+
+1. Verify Twilio credentials:
+   ```bash
+   agenticai test-connection
+   ```
+
+2. Check webhook URL is publicly accessible:
+   ```bash
+   curl https://your-url.ngrok.io/health
+   ```
+
+3. Ensure server is running:
+   ```bash
+   curl http://localhost:8080/health
+   ```
+
+4. Check server logs:
+   ```bash
+   agenticai service logs -f
+   ```
+
+</Accordion>
+
+<Accordion title="AI not responding during call">
+
+**Symptoms:** Call connects but AI is silent
+
+**Solutions:**
+
+1. Verify OpenAI API key has Realtime API access
+2. Check WebSocket connection in server logs
+3. Confirm audio codec compatibility (Twilio uses μ-law)
+4. Test with a different voice:
+   ```yaml
+   # config.yaml
+   openai_realtime:
+     voice: "echo"  # Try: alloy, echo, fable, onyx, nova, shimmer
+   ```
+
+Reference: `src/agenticai/cli.py:65-100`
+
+</Accordion>
+
+<Accordion title="Error: Missing webhook URL">
+
+**Symptoms:** `Error: --webhook-url required or set NGROK_URL environment variable`
+
+**Solutions:**
+
+1. Set the environment variable:
+   ```bash
+   export NGROK_URL=https://your-subdomain.ngrok.io
+   ```
+
+2. Or provide it in the command:
+   ```bash
+   agenticai trigger --to +15551234567 --webhook-url https://xxxx.ngrok.io
+   ```
+
+Reference: `src/agenticai/cli.py:479-484`
+
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Receiving Calls" icon="phone-incoming" href="/guides/receiving-calls">
+    Set up incoming call handling
+  </Card>
+  <Card title="Scheduling Calls" icon="calendar" href="/guides/scheduling-calls">
+    Automate calls with schedules
+  </Card>
+  <Card title="Telegram Integration" icon="paper-plane" href="/guides/telegram-integration">
+    Get live call transcripts
+  </Card>
+  <Card title="Service Management" icon="server" href="/guides/service-management">
+    Run as a background service
+  </Card>
+</CardGroup>
