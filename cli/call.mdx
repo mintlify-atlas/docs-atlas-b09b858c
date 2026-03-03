@@ -1,0 +1,172 @@
+---
+title: agenticai call
+description: Initiate an outbound phone call with dedicated session management
+---
+
+Directly initiate an outbound phone call with a custom prompt. This command creates a temporary call manager session and waits for the call to complete.
+
+<Note>
+  For quick calls to a running server, use [`agenticai trigger`](/cli/trigger) instead. The `call` command is useful for standalone call execution without a persistent server.
+</Note>
+
+## Usage
+
+```bash
+agenticai call --to <phone-number> \
+  --prompt <instructions> \
+  --webhook-url <public-url>
+```
+
+## Options
+
+<ParamField path="--to" type="string" required>
+  Phone number to call in E.164 format (e.g., `+15551234567`)
+  
+  **Short form:** `-t`
+  
+  **Example:**
+  ```bash
+  agenticai call -t +15551234567 --prompt "..." --webhook-url https://...
+  ```
+</ParamField>
+
+<ParamField path="--prompt" type="string" required>
+  Instructions or system prompt for the AI agent during the call
+  
+  **Short form:** `-p`
+  
+  **Example:**
+  ```bash
+  agenticai call -t +15551234567 -p "You are a helpful assistant" -w https://...
+  ```
+</ParamField>
+
+<ParamField path="--webhook-url" type="string" required>
+  Public webhook base URL for Twilio to connect to (from ngrok or Cloudflare tunnel)
+  
+  **Short form:** `-w`
+  
+  **Example:**
+  ```bash
+  agenticai call -t +15551234567 -p "..." -w https://abc123.ngrok.io
+  ```
+</ParamField>
+
+<ParamField path="--config" type="string" default="config.yaml">
+  Path to configuration file (global option)
+  
+  **Short form:** `-c`
+  
+  **Example:**
+  ```bash
+  agenticai --config /path/to/config.yaml call -t +15551234567 -p "..." -w https://...
+  ```
+</ParamField>
+
+## How It Works
+
+1. **Loads configuration** from `config.yaml` and `.env`
+2. **Creates CallManager** instance with your Twilio and AI credentials
+3. **Initiates the call** to the specified phone number
+4. **Waits for completion** - the command blocks until the call ends
+5. **Cleans up** the CallManager session automatically
+
+Unlike [`agenticai trigger`](/cli/trigger), this command doesn't require a running server. It creates a temporary session just for this call.
+
+## Examples
+
+### Basic Call
+
+```bash
+agenticai call \
+  --to +15551234567 \
+  --prompt "You are a friendly assistant helping with customer support" \
+  --webhook-url https://abc123.ngrok.io
+```
+
+### Call with Custom Config
+
+```bash
+agenticai --config production.yaml call \
+  -t +15551234567 \
+  -p "You are scheduling an appointment" \
+  -w https://calls.yourdomain.com
+```
+
+### Call with Multi-line Prompt
+
+```bash
+agenticai call -t +15551234567 \
+  -p "You are a helpful assistant. Your goals:
+1. Ask about their day
+2. Take notes if needed
+3. Be friendly and professional" \
+  -w https://abc123.ngrok.io
+```
+
+## Output
+
+```
+Initiating call to +15551234567
+Prompt: You are a friendly assistant helping with...
+
+✓ Call initiated! Call ID: CA1234567890abcdef1234567890abcd
+
+Waiting for call to complete... (Ctrl+C to exit)
+
+✓ Call completed.
+```
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="One-off Calls" icon="phone">
+    Perfect for making single calls without running a persistent server
+  </Card>
+  <Card title="Testing" icon="flask">
+    Test your prompts and configuration quickly during development
+  </Card>
+  <Card title="Scripted Calls" icon="terminal">
+    Integrate into shell scripts for automated calling workflows
+  </Card>
+  <Card title="Debug Sessions" icon="bug">
+    Debug call behavior in isolation without service complexity
+  </Card>
+</CardGroup>
+
+## Difference from `agenticai trigger`
+
+| Feature | `agenticai call` | `agenticai trigger` |
+|---------|------------------|---------------------|
+| Requires running server | ❌ No | ✅ Yes |
+| Session management | Temporary, auto-cleanup | Uses server's persistent CallManager |
+| Waits for completion | ✅ Blocks until call ends | ❌ Returns immediately |
+| Best for | Single calls, scripts, testing | Multiple calls, production, API usage |
+
+## Troubleshooting
+
+<Accordion title="Call fails to connect">
+  - Verify Twilio credentials in `.env` are correct
+  - Ensure webhook URL is publicly accessible
+  - Check that your Twilio number has voice capabilities
+  - Test with `agenticai test-connection` first
+</Accordion>
+
+<Accordion title="Command hangs indefinitely">
+  - The command waits for the call to complete
+  - Press Ctrl+C to cancel and cleanup
+  - Check if the call connected in Twilio Console logs
+</Accordion>
+
+<Accordion title="Webhook URL not reachable">
+  - Ensure ngrok or Cloudflare tunnel is running: `agenticai tunnel start`
+  - Verify the URL is accessible: `curl https://your-url.ngrok.io/health`
+  - Make sure the URL doesn't have a trailing slash
+</Accordion>
+
+## Related Commands
+
+- [agenticai trigger](/cli/trigger) - Quick call to running server
+- [agenticai server](/cli/server) - Start persistent webhook server
+- [agenticai status](/cli/status) - Check system configuration
+- [Making Calls Guide](/guides/making-calls) - Complete calling workflows
